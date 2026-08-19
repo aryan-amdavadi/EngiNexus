@@ -235,3 +235,51 @@ export async function fetchFacultyList(): Promise<{ data: FacultyEntry[] }> {
   if (!res.ok) throw new Error("Failed to fetch faculty.");
   return res.json() as Promise<{ data: FacultyEntry[] }>;
 }
+
+export type LabEntry = {
+  id: string;
+  name: string;
+  department: string;
+  capacity: number;
+  utilizationRate: number;
+  status: string;
+  capabilities: string[];
+  equipment: Array<{ id: string; name: string; quantity: number }>;
+};
+
+export type EquipmentEntry = {
+  id: string;
+  name: string;
+  category: string;
+  location: string;
+  utilizationRate: number;
+  status: string;
+  availability: number;
+};
+
+export async function fetchLabs(): Promise<{ data: LabEntry[] }> {
+  const res = await fetch("/api/labs", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch labs.");
+  return res.json() as Promise<{ data: LabEntry[] }>;
+}
+
+export async function fetchEquipment(): Promise<{ data: EquipmentEntry[] }> {
+  const res = await fetch("/api/equipment", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch equipment.");
+  return res.json() as Promise<{ data: EquipmentEntry[] }>;
+}
+
+export type SkillProfile = {
+  student: { id: string; name: string; department: string };
+  skills: Array<{
+    skill: string;
+    confidence: number;
+    evidence: Array<{ source: string; detail: string; contribution: number }>;
+  }>;
+};
+
+export async function fetchStudentSkillProfile(studentId: string): Promise<{ data: SkillProfile }> {
+  const res = await fetch(`/api/students/${studentId}/skills`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch student skill profile.");
+  return res.json() as Promise<{ data: SkillProfile }>;
+}

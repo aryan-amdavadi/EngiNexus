@@ -1,9 +1,9 @@
 {
-  "/api/resources/forecast/route": "app/api/resources/forecast/route.js",
   "/api/resources/utilization/route": "app/api/resources/utilization/route.js",
+  "/api/resources/forecast/route": "app/api/resources/forecast/route.js",
   "/api/resources/bottlenecks/route": "app/api/resources/bottlenecks/route.js",
   "/api/projects/route": "app/api/projects/route.js",
-  "/api/projects/[id]/analyze/route": "app/api/projects/[id]/analyze/route.js",
   "/api/projects/[id]/team/route": "app/api/projects/[id]/team/route.js",
+  "/api/projects/[id]/analyze/route": "app/api/projects/[id]/analyze/route.js",
   "/page": "app/page.js"
 }

@@ -17,15 +17,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/resources/utilization/route.js"
     ],
-    "/api/resources/bottlenecks/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/resources/bottlenecks/route.js"
-    ],
     "/api/resources/forecast/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/resources/forecast/route.js"
+    ],
+    "/api/resources/bottlenecks/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/resources/bottlenecks/route.js"
     ],
     "/api/projects/route": [
       "static/chunks/webpack.js",
