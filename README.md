@@ -120,3 +120,63 @@ npm run test:analysis
 The build is validated with:
 
 npm run build
+
+## Academic Data Import (Task B6)
+
+EngiNexus supports an **authorized offline academic data import pipeline**. It does not scrape any university portal, does not connect to external APIs, and does not enumerate enrollment numbers automatically. All data must be provided as a local CSV or JSON export.
+
+### Pipeline
+
+```
+CSV / JSON export
+  → Validation (required columns, valid grades, known students/courses)
+  → Normalization (column aliases, grade normalisation O/S/E → A+/A/A-)
+  → StudentAcademicRecord (upsert)
+  → CourseSkill mapping
+  → StudentSkill evidence upsert (feeds the Skill Profile engine)
+  → Student Skill Profile (calculateStudentSkillProfile)
+```
+
+### Authorization
+
+Set `IMPORT_API_KEY` in your `.env` file. Pass the same value as `X-API-Key` in each request. Omitting the env var disables auth (development mode).
+
+### Supported grades
+
+`A+` `A` `A-` `B+` `B` `B-` `C+` `C` `C-` `D` `F`
+
+Non-standard grades are normalised: `O` → `A+`, `S` → `A`, `E` → `A-`.
+
+### Example JSON import
+
+```bash
+curl -X POST http://localhost:3000/api/academic/import \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: dev-import-key-change-in-production" \
+  -d '{"format":"json","data":[{"student_id":"<id>","semester":"2026-Winter","course_code":"CE201","grade":"A+","credits":4}]}'
+```
+
+### Example response
+
+```json
+{
+  "success": true,
+  "summary": {
+    "recordsDetected": 120,
+    "students": 30,
+    "courses": 18,
+    "imported": 116,
+    "skipped": 4,
+    "skippedRecords": [
+      { "rowNumber": 12, "reason": "Invalid grade \"Z\"." }
+    ],
+    "message": "Import completed with skipped records."
+  }
+}
+```
+
+### Synthetic fixture
+
+A demonstration CSV is at `scripts/fixtures/academic_sample.csv`. Run the full pipeline test with:
+
+    npm run test:academic-import

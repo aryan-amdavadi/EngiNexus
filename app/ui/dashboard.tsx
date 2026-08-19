@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import {
   analyzeProject,
   fetchProjectTeam,
+  fetchProjectAnalysis,
+  fetchProjects,
+  fetchStudentList,
+  fetchFacultyList,
   fetchResourceBottlenecks,
   fetchResourceForecast,
   fetchResourceUtilization,
@@ -12,6 +16,10 @@ import {
   type ResourceForecastEntry,
   type ResourceUtilizationEntry,
   type TeamRecommendation,
+  type BackendAnalysis,
+  type BackendProject,
+  type StudentEntry,
+  type FacultyEntry,
 } from "./intelligence";
 import { bottlenecks, equipment, examples, faculty, labs, students } from "./data";
 import "./polish.css";
@@ -177,31 +185,54 @@ function Project() {
   const [state, setState] = useState<"idle" | "analyzing" | "results">("idle");
   const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null);
   const [team, setTeam] = useState<TeamRecommendation | null>(null);
+  const [backendAnalysis, setBackendAnalysis] = useState<BackendAnalysis | null>(null);
   const [plan, setPlan] = useState(false);
   const [selectedExample, setSelectedExample] = useState(examples[0].label);
+  const [dbProjects, setDbProjects] = useState<BackendProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+
+  useEffect(() => {
+    fetchProjects()
+      .then((res) => {
+        const list = res.data ?? [];
+        setDbProjects(list);
+        if (list.length > 0) setSelectedProjectId(list[0].id);
+      })
+      .catch(() => {});
+  }, []);
 
   const run = async () => {
     setState("analyzing");
     setPlan(false);
     setTeam(null);
+    setBackendAnalysis(null);
 
     const resolvedAnalysis = analyzeProject(input);
     setAnalysis(resolvedAnalysis);
 
     try {
-      const projectList = await fetch("/api/projects", { cache: "no-store" }).then((response) => response.json());
-      const project = projectList?.data?.find((item: { title: string; summary: string }) => {
-        const haystack = `${item.title} ${item.summary}`.toLowerCase();
-        const query = input.toLowerCase();
-        return haystack.includes("crop") && query.includes("crop") || haystack.includes("road") && query.includes("road") || haystack.includes("medical") && query.includes("medical") || haystack.includes("warehouse") && query.includes("warehouse") || haystack.includes("energy") && query.includes("energy");
-      }) ?? projectList?.data?.[0];
+      let projectId = selectedProjectId;
+      if (!projectId) {
+        const projectList = await fetch("/api/projects", { cache: "no-store" }).then((r) => r.json());
+        const matched = projectList?.data?.find((item: { title: string; summary: string; id: string }) => {
+          const h = `${item.title} ${item.summary}`.toLowerCase();
+          const q = input.toLowerCase();
+          return (h.includes("crop") && q.includes("crop")) || (h.includes("road") && q.includes("road")) || (h.includes("medical") && q.includes("medical")) || (h.includes("warehouse") && q.includes("warehouse")) || (h.includes("energy") && q.includes("energy"));
+        }) ?? projectList?.data?.[0];
+        projectId = matched?.id ?? "";
+      }
 
-      if (project?.id) {
-        const teamResponse = await fetchProjectTeam(project.id);
+      if (projectId) {
+        const [analysisResponse, teamResponse] = await Promise.all([
+          fetchProjectAnalysis(projectId),
+          fetchProjectTeam(projectId),
+        ]);
+        setBackendAnalysis(analysisResponse.data);
         setTeam(teamResponse);
       }
     } catch (_error) {
       setTeam(null);
+      setBackendAnalysis(null);
     }
 
     setState("results");

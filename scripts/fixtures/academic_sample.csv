@@ -1,0 +1,10 @@
+student_id,student_name,program,semester,course_code,course_name,grade,credits,sgpa
+cmszxwxzw00itoqbn8ugd754b,Aarav Patel,Computer Engineering,2026-Winter,CE201,Computer Vision Fundamentals,A+,4,9.5
+cmszxwxzw00itoqbn8ugd754b,Aarav Patel,Computer Engineering,2026-Winter,CE301,Deep Learning Systems,A,4,9.1
+cmszxwy0h00j9oqbnw9lbjzfn,Riya Shah,Mechatronics,2026-Winter,MT101,Robotics Design,A,4,9.0
+cmszxwy0h00j9oqbnw9lbjzfn,Riya Shah,Mechatronics,2026-Winter,MT201,Autonomous Systems,A-,3,8.7
+cmszxwy1500jpoqbn50aqscs6,Dev Mehta,Data Science,2026-Winter,CE301,Deep Learning Systems,B+,4,8.2
+cmszxwy1500jpoqbn50aqscs6,Dev Mehta,Data Science,2026-Winter,CE201,Computer Vision Fundamentals,B,4,7.9
+cmszxwy1t00k5oqbnhvpo2dp7,Meera Desai,Agricultural Engineering,2026-Winter,CE101,Introduction to Computing,B+,3,8.3
+cmszxwy2f00kloqbnvrod29z6,Ishaan Verma,Computer Engineering,2026-Winter,CE401,Advanced AI Systems,A,4,9.2
+cmszxwy2f00kloqbnvrod29z6,Ishaan Verma,Computer Engineering,2026-Winter,CE201,Computer Vision Fundamentals,A+,4,9.6

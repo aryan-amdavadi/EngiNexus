@@ -136,3 +136,102 @@ export function analyzeProject(input: string): ProjectAnalysis {
   if (value.includes("warehouse")) return { ...flagship, title: "Autonomous Warehouse Robot", domains: ["Robotics", "Computer Vision", "Embedded Systems"], equipment: ["GPU Workstation", "Robotic Platform", "Depth Camera", "Environmental Sensors"], labs: ["Robotics Lab", "AI / ML Lab", "IoT / Embedded Systems Lab"] };
   return { ...flagship, title: input.trim().slice(0, 58) || examples[0].label };
 }
+
+// ── B7 Backend types ───────────────────────────────────────────────────────
+
+export type BackendProject = {
+  id: string;
+  title: string;
+  summary: string;
+  domains: string[];
+  status: string;
+  department: string;
+  requirementCount: number;
+};
+
+export type BackendAnalysis = {
+  project: { id: string; title: string; summary: string; department: string; domains: string[] };
+  domains: string[];
+  requiredSkills: Array<{ id: string; name: string; category: string | null }>;
+  requiredLaboratories: Array<{ id: string; name: string; status: string; utilizationRate: number }>;
+  requiredEquipment: Array<{ id: string; name: string; category: string; location: string; status: string }>;
+  skillMatches: Array<{
+    skill: string;
+    students: Array<{ student: { id: string; name: string; department: string; email: string }; score: number; matchedSkills: string[]; missingSkills: string[]; reasons: string[] }>;
+  }>;
+  facultyMatches: Array<{
+    faculty: { id: string; name: string; title: string; department: string };
+    score: number;
+    matchedExpertise: string[];
+    reasons: string[];
+  }>;
+  labMatches: Array<{
+    lab: { id: string; name: string; department: string };
+    score: number;
+    availableCapabilities: string[];
+    constraints: string[];
+    reasons: string[];
+  }>;
+  equipmentMatches: Array<{
+    equipment: { id: string; name: string; category: string; location: string };
+    status: string;
+    score: number;
+    available: boolean;
+    limited: boolean;
+    unavailable: boolean;
+    reasons: string[];
+  }>;
+  feasibility: {
+    skillCoverage: number;
+    facultyCoverage: number;
+    equipmentAvailability: number;
+    laboratoryAvailability: number;
+    scheduleFeasibility: number;
+    overall: number;
+  };
+  positiveFactors: string[];
+  constraints: string[];
+  recommendations: string[];
+  status: string;
+  score: number;
+};
+
+export type StudentEntry = {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  skills: Array<{ id: string; name: string; proficiency: number }>;
+};
+
+export type FacultyEntry = {
+  id: string;
+  name: string;
+  title: string;
+  department: string;
+  expertise: Array<{ id: string; name: string; proficiency: number }>;
+};
+
+export async function fetchProjects(): Promise<{ data: BackendProject[] }> {
+  const res = await fetch("/api/projects", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch projects.");
+  return res.json() as Promise<{ data: BackendProject[] }>;
+}
+
+export async function fetchProjectAnalysis(projectId: string): Promise<{ data: BackendAnalysis }> {
+  const res = await fetch(`/api/projects/${projectId}/analyze`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to analyze project.");
+  return res.json() as Promise<{ data: BackendAnalysis }>;
+}
+
+export async function fetchStudentList(): Promise<{ data: StudentEntry[] }> {
+  const res = await fetch("/api/students", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch students.");
+  return res.json() as Promise<{ data: StudentEntry[] }>;
+}
+
+export async function fetchFacultyList(): Promise<{ data: FacultyEntry[] }> {
+  const res = await fetch("/api/faculty", { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch faculty.");
+  return res.json() as Promise<{ data: FacultyEntry[] }>;
+}

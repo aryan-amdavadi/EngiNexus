@@ -7,7 +7,42 @@ type RequestBody = {
   data?: string | Array<Record<string, unknown>>;
 };
 
+/**
+ * POST /api/academic/import
+ *
+ * Authorization (optional but recommended in production):
+ *   Set IMPORT_API_KEY in your .env file.
+ *   Pass the same value as the X-API-Key header in every import request.
+ *   If IMPORT_API_KEY is not set, the endpoint operates without auth (development mode).
+ *
+ * Request body (JSON):
+ *   {
+ *     "format": "csv" | "json",
+ *     "data": "<csv string>" | [{ ...row }, ...]
+ *   }
+ *
+ * Privacy contract:
+ *   - Raw academic records are NOT exposed via any GET route.
+ *   - This endpoint returns only an import summary.
+ *   - Skill evidence is derived and stored; grades themselves remain private.
+ */
 export async function POST(request: Request) {
+  // ── Authorization ──────────────────────────────────────────────────────────
+  const expectedKey = process.env.IMPORT_API_KEY;
+  if (expectedKey) {
+    const providedKey = request.headers.get("x-api-key");
+    if (!providedKey || providedKey !== expectedKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized. A valid X-API-Key header is required for academic data import.",
+        },
+        { status: 401 },
+      );
+    }
+  }
+
+  // ── Parse body ─────────────────────────────────────────────────────────────
   let body: RequestBody;
 
   try {
@@ -16,7 +51,7 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
-        error: "Malformed request body. Expected JSON payload.",
+        error: "Malformed request body. Expected JSON payload with { format, data }.",
       },
       { status: 400 },
     );
@@ -42,6 +77,7 @@ export async function POST(request: Request) {
     );
   }
 
+  // ── Run pipeline ───────────────────────────────────────────────────────────
   try {
     const summary = await importAcademicData({
       format: body.format,
@@ -53,8 +89,14 @@ export async function POST(request: Request) {
       summary,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to import academic records.";
-    const status = message.toLowerCase().includes("expects") || message.toLowerCase().includes("required") ? 400 : 500;
+    const message =
+      error instanceof Error ? error.message : "Failed to import academic records.";
+    const status =
+      message.toLowerCase().includes("expects") ||
+      message.toLowerCase().includes("required") ||
+      message.toLowerCase().includes("format")
+        ? 400
+        : 500;
 
     return NextResponse.json(
       {
