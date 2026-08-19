@@ -204,24 +204,39 @@ function Project() {
     setAnalysis(resolvedAnalysis);
 
     try {
-      let projectId = selectedProjectId;
-      if (!projectId) {
+      let isSeededExample = false;
+      let matchedProjectId = "";
+
+      if (selectedExample) {
+        // If an example was clicked, it might match a seeded project
         const projectList = await fetch("/api/projects", { cache: "no-store" }).then((r) => r.json());
         const matched = projectList?.data?.find((item: { title: string; summary: string; id: string }) => {
           const h = `${item.title} ${item.summary}`.toLowerCase();
           const q = input.toLowerCase();
           return (h.includes("crop") && q.includes("crop")) || (h.includes("road") && q.includes("road")) || (h.includes("medical") && q.includes("medical")) || (h.includes("warehouse") && q.includes("warehouse")) || (h.includes("energy") && q.includes("energy"));
-        }) ?? projectList?.data?.[0];
-        projectId = matched?.id ?? "";
+        });
+        
+        if (matched) {
+          isSeededExample = true;
+          matchedProjectId = matched.id;
+        }
       }
 
-      if (projectId) {
-        const [analysisResponse, teamResponse] = await Promise.all([
-          fetchProjectAnalysis(projectId),
-          fetchProjectTeam(projectId),
-        ]);
-        setBackendAnalysis(analysisResponse.data);
-        setTeam(teamResponse);
+      const payload = isSeededExample && matchedProjectId ? { projectId: matchedProjectId } : { input };
+      const res = await fetch("/api/projects/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+      });
+
+      if (res.ok) {
+        const json = await res.json();
+        setBackendAnalysis(json.data.analysis);
+        setTeam(json.data.team);
+      } else {
+        setTeam(null);
+        setBackendAnalysis(null);
       }
     } catch (_error) {
       setTeam(null);

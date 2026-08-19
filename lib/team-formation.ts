@@ -17,33 +17,7 @@ function average(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
-export async function formProjectTeam(projectId: string, teamSize = 4) {
-  if (!projectId || projectId.trim() === "") {
-    throw new Error("Project ID is required.");
-  }
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: {
-      department: true,
-      requirements: {
-        include: { skill: true },
-      },
-    },
-  });
-
-  if (!project) {
-    throw new Error(`Project with ID "${projectId}" was not found.`);
-  }
-
-  const requiredSkills = Array.from(
-    new Set(
-      project.requirements
-        .filter((requirement) => requirement.requirementType === "SKILL" && requirement.skill)
-        .map((requirement) => requirement.skill!.name),
-    ),
-  );
-
+export async function formTeamFromSkills(requiredSkills: string[], departmentName: string = "", teamSize = 4) {
   if (requiredSkills.length === 0) {
     return {
       teamScore: 0,
@@ -94,8 +68,8 @@ export async function formProjectTeam(projectId: string, teamSize = 4) {
       const coverageScore = coveredSkills.reduce((sum, skill) => sum + (skillMap.get(skill) ?? 0), 0);
       const averageConfidence = average(coveredSkills.map((skill) => skillMap.get(skill) ?? 0));
       const projectCoverage = (coveredSkills.length / requiredSkills.length) * 100;
-      const departmentName = project.department?.name ?? "";
-      const domainRelevance = candidate.student.department.name === departmentName ? 100 : 70;
+      
+      const domainRelevance = (departmentName && candidate.student.department.name === departmentName) ? 100 : 70;
       const marginalScore =
         coverageScore * weights.coverage +
         averageConfidence * weights.averageConfidence +
@@ -167,6 +141,36 @@ export async function formProjectTeam(projectId: string, teamSize = 4) {
       department: member.department,
     })),
   };
+}
+
+export async function formProjectTeam(projectId: string, teamSize = 4) {
+  if (!projectId || projectId.trim() === "") {
+    throw new Error("Project ID is required.");
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      department: true,
+      requirements: {
+        include: { skill: true },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new Error(`Project with ID "${projectId}" was not found.`);
+  }
+
+  const requiredSkills = Array.from(
+    new Set(
+      project.requirements
+        .filter((requirement) => requirement.requirementType === "SKILL" && requirement.skill)
+        .map((requirement) => requirement.skill!.name),
+    ),
+  );
+
+  return formTeamFromSkills(requiredSkills, project.department?.name, teamSize);
 }
 
 function calculateProjectRelevance(coveredCount: number, totalCount: number) {

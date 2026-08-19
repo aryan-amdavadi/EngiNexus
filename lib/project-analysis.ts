@@ -55,43 +55,13 @@ function buildStatusLabel(overall: number): string {
   return "HIGH_RISK";
 }
 
-export async function analyzeProject(projectId: string) {
-  if (!projectId || projectId.trim() === "") {
-    throw new Error("Project ID is required.");
-  }
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: {
-      department: true,
-      requirements: {
-        include: {
-          skill: true,
-          equipment: true,
-          laboratory: true,
-        },
-      },
-    },
-  });
-
-  if (!project) {
-    throw new Error(`Project with ID "${projectId}" was not found.`);
-  }
-
-  const domains = parseStringArray(project.domains);
-  const requiredSkills = project.requirements
-    .filter((requirement) => requirement.requirementType === "SKILL" && requirement.skill)
-    .map((requirement) => requirement.skill!);
-
-  const requiredEquipment = project.requirements
-    .filter((requirement) => requirement.requirementType === "EQUIPMENT" && requirement.equipment)
-    .map((requirement) => requirement.equipment!);
-
-  const requiredLabs = project.requirements
-    .filter((requirement) => requirement.requirementType === "LABORATORY" && requirement.laboratory)
-    .map((requirement) => requirement.laboratory!);
-
-  const skillIds = requiredSkills.map((skill) => skill.id);
+async function computeProjectIntelligence(
+  projectInfo: { id: string; title: string; summary: string; department: string; domains: string[] },
+  requiredSkills: any[],
+  requiredEquipment: any[],
+  requiredLabs: any[]
+) {
+  const domains = projectInfo.domains;
 
   const skillMatches = await Promise.all(
     requiredSkills.map(async (skill) => {
@@ -149,55 +119,71 @@ export async function analyzeProject(projectId: string) {
     }),
   );
 
-  const facultyMatches = await Promise.all(
-    requiredSkills.map(async (skill) => {
-      const expertiseRecords = await prisma.facultyExpertise.findMany({
-        where: { skillId: skill.id },
-        include: {
-          skill: true,
-          faculty: {
-            include: { department: true },
-          },
-        },
-      });
-
-      return Promise.all(
-        expertiseRecords.map(async (entry) => {
-          const facultySkillRecords = await prisma.facultyExpertise.findMany({
-            where: { facultyId: entry.faculty.id },
-            include: { skill: true },
-          });
-
-          const facultySkills = facultySkillRecords.map((expertise) => expertise.skill.name);
-          const matchedExpertise = facultySkills.filter((name) =>
-            requiredSkills.some((required) => required.name === name),
-          );
-
-          const score = Math.min(
-            100,
-            Math.max(45, Math.round(entry.proficiency * 18 + entry.yearsExperience * 3 + matchedExpertise.length * 11)),
-          );
-
-          return {
-            faculty: {
-              id: entry.faculty.id,
-              name: `${entry.faculty.firstName} ${entry.faculty.lastName}`,
-              title: entry.faculty.title,
-              department: entry.faculty.department.name,
-            },
-            score,
-            matchedExpertise: Array.from(new Set(matchedExpertise)),
-            reasons: [
-              `Expertise in ${skill.name} with ${entry.proficiency}/5 proficiency.`,
-              entry.yearsExperience > 0 ? `${entry.yearsExperience} years of relevant mentorship experience.` : "Relevant applied research background.",
-            ],
-          };
-        }),
-      );
-    }),
-  );
-
-  const flattenedFacultyMatches = facultyMatches.flat();
+  // Faculty Deduplication & Weighted Scoring
+  const allFaculty = await prisma.faculty.findMany({ include: { department: true } });
+  
+  const facultyMatches = [];
+  
+  for (const faculty of allFaculty) {
+    const expertiseRecords = await prisma.facultyExpertise.findMany({
+      where: { facultyId: faculty.id },
+      include: { skill: true }
+    });
+    
+    if (expertiseRecords.length === 0) continue;
+    
+    const matchedExpertise = expertiseRecords.filter(exp => 
+      requiredSkills.some(req => req.id === exp.skill.id)
+    );
+    
+    if (matchedExpertise.length === 0) continue;
+    
+    const skillCoverage = matchedExpertise.length / requiredSkills.length;
+    const maxProficiency = Math.max(...matchedExpertise.map(e => e.proficiency));
+    const avgProficiency = average(matchedExpertise.map(e => e.proficiency));
+    const expertiseProficiency = (maxProficiency * 0.7 + avgProficiency * 0.3) / 5;
+    
+    const domainRelevance = domains.some(d => faculty.department.name.includes(d) || matchedExpertise.some(e => e.skill.category?.includes(d))) ? 1 : 0.5;
+    const projectRelevance = matchedExpertise.some(e => e.yearsExperience > 0) ? 1 : 0.4;
+    const departmentRelevance = (projectInfo.department && faculty.department.name === projectInfo.department) ? 1 : 0.6;
+    
+    // Using availability from database
+    const mentoringAvailability = (faculty as any).available !== false ? 1 : 0;
+    
+    const rawScore = 
+      (0.40 * skillCoverage) + 
+      (0.20 * expertiseProficiency) + 
+      (0.15 * domainRelevance) + 
+      (0.10 * projectRelevance) + 
+      (0.10 * departmentRelevance) + 
+      (0.05 * mentoringAvailability);
+      
+    const score = Math.min(100, Math.round(rawScore * 100));
+    
+    const reasons = [
+      `Matches ${matchedExpertise.length} of ${requiredSkills.length} required skills.`,
+      `Expertise in: ${matchedExpertise.map(e => `${e.skill.name} (${e.proficiency}/5)`).join(", ")}.`
+    ];
+    if (domainRelevance === 1) reasons.push("Strong domain relevance based on department or skill category.");
+    if (mentoringAvailability === 1) reasons.push("Available for mentoring.");
+    
+    facultyMatches.push({
+      faculty: {
+        id: faculty.id,
+        name: `${faculty.firstName} ${faculty.lastName}`,
+        title: faculty.title,
+        department: faculty.department.name,
+      },
+      score,
+      skillCoverage: Math.round(skillCoverage * 100),
+      expertiseBreadth: matchedExpertise.length,
+      matchedExpertise: matchedExpertise.map(e => e.skill.name),
+      reasons,
+    });
+  }
+  
+  facultyMatches.sort((a, b) => b.score - a.score || b.skillCoverage - a.skillCoverage || b.expertiseBreadth - a.expertiseBreadth);
+  const topFacultyMatches = facultyMatches.slice(0, 5);
 
   const labMatches = await Promise.all(
     requiredLabs.map(async (lab) => {
@@ -207,7 +193,17 @@ export async function analyzeProject(projectId: string) {
       });
 
       const capabilities = parseStringArray(lab.capabilities);
-      const score = Math.min(100, Math.max(35, 100 - Math.max(0, lab.utilizationRate - 35)));
+      const capabilityCoverage = capabilities.length > 0 ? 1 : 0.5;
+      
+      const matchedEquipment = labEquipment.filter(le => requiredEquipment.some(re => re.id === le.equipmentId));
+      const equipmentCoverage = requiredEquipment.length > 0 ? matchedEquipment.length / requiredEquipment.length : 1;
+      
+      const availabilityScore = lab.status === "AVAILABLE" ? 1 : lab.status === "LIMITED" ? 0.7 : 0.3;
+      const utilizationHealth = lab.utilizationRate ? Math.max(0, (100 - lab.utilizationRate) / 100) : 1;
+      
+      const rawScore = 0.40 * capabilityCoverage + 0.25 * equipmentCoverage + 0.20 * availabilityScore + 0.15 * utilizationHealth;
+      const score = Math.min(100, Math.max(0, Math.round(rawScore * 100)));
+      
       const constraints = [] as string[];
 
       if (lab.utilizationRate >= 85) {
@@ -229,11 +225,14 @@ export async function analyzeProject(projectId: string) {
         constraints,
         reasons: [
           capabilities.length > 0 ? `Includes ${capabilities.slice(0, 3).join(", ")}.` : "Capability mapping is sparse.",
-          lab.status === "AVAILABLE" ? "Current lab availability is acceptable for project work." : `Status is ${lab.status.toLowerCase().replace(/_/g, " ")}.`,
+          lab.status === "AVAILABLE" ? "Current lab availability is acceptable for project work." : `Status is ${lab.status?.toLowerCase().replace(/_/g, " ")}.`,
+          `Equipment coverage in this lab: ${Math.round(equipmentCoverage * 100)}%.`
         ],
       };
     }),
   );
+  
+  labMatches.sort((a, b) => b.score - a.score);
 
   const equipmentMatches = await Promise.all(
     requiredEquipment.map(async (equipment) => {
@@ -266,6 +265,7 @@ export async function analyzeProject(projectId: string) {
       };
     }),
   );
+  equipmentMatches.sort((a, b) => b.score - a.score);
 
   const skillCoverage = requiredSkills.length
     ? Math.round(
@@ -273,8 +273,8 @@ export async function analyzeProject(projectId: string) {
       )
     : 100;
 
-  const facultyCoverage = flattenedFacultyMatches.length
-    ? average(flattenedFacultyMatches.map((match) => match.score))
+  const facultyCoverage = topFacultyMatches.length
+    ? average(topFacultyMatches.map((match) => match.score))
     : 55;
 
   const equipmentAvailability = equipmentMatches.length
@@ -305,7 +305,7 @@ export async function analyzeProject(projectId: string) {
 
   const positiveFactors = [
     requiredSkills.length > 0 ? "Required technical skills are represented in the student and faculty ecosystem." : "No explicit skill requirements were declared.",
-    flattenedFacultyMatches.length > 0 ? "Suitable faculty expertise was identified for the project scope." : "Faculty expertise coverage is limited and should be validated.",
+    topFacultyMatches.length > 0 ? "Suitable faculty expertise was identified for the project scope." : "Faculty expertise coverage is limited and should be validated.",
     requiredLabs.length > 0 ? "Core lab infrastructure has been mapped to the project requirements." : "No dedicated lab requirements were declared.",
   ];
 
@@ -339,13 +339,7 @@ export async function analyzeProject(projectId: string) {
   const finalOverall = Math.round(overall);
 
   return {
-    project: {
-      id: project.id,
-      title: project.title,
-      summary: project.summary,
-      department: project.department.name,
-      domains,
-    },
+    project: projectInfo,
     domains,
     requiredSkills: requiredSkills.map((skill) => ({
       id: skill.id,
@@ -366,7 +360,7 @@ export async function analyzeProject(projectId: string) {
       status: equipment.status,
     })),
     skillMatches,
-    facultyMatches: flattenedFacultyMatches,
+    facultyMatches: topFacultyMatches,
     labMatches,
     equipmentMatches,
     feasibility: {
@@ -384,6 +378,145 @@ export async function analyzeProject(projectId: string) {
     status: buildStatusLabel(finalOverall),
     score: finalOverall,
   };
+}
+
+export async function analyzeProject(projectId: string) {
+  if (!projectId || projectId.trim() === "") {
+    throw new Error("Project ID is required.");
+  }
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: {
+      department: true,
+      requirements: {
+        include: {
+          skill: true,
+          equipment: true,
+          laboratory: true,
+        },
+      },
+    },
+  });
+
+  if (!project) {
+    throw new Error(`Project with ID "${projectId}" was not found.`);
+  }
+
+  const requiredSkills = project.requirements
+    .filter((requirement) => requirement.requirementType === "SKILL" && requirement.skill)
+    .map((requirement) => requirement.skill!);
+
+  const requiredEquipment = project.requirements
+    .filter((requirement) => requirement.requirementType === "EQUIPMENT" && requirement.equipment)
+    .map((requirement) => requirement.equipment!);
+
+  const requiredLabs = project.requirements
+    .filter((requirement) => requirement.requirementType === "LABORATORY" && requirement.laboratory)
+    .map((requirement) => requirement.laboratory!);
+
+  return computeProjectIntelligence(
+    {
+      id: project.id,
+      title: project.title,
+      summary: project.summary,
+      department: project.department.name,
+      domains: parseStringArray(project.domains),
+    },
+    requiredSkills,
+    requiredEquipment,
+    requiredLabs
+  );
+}
+
+export async function analyzeCustomProject(input: string) {
+  const value = input.toLowerCase();
+  
+  // Keyword Normalization and Phrase Matching
+  let title = "Custom Engineering Project";
+  if (value.includes("pothole") || value.includes("road")) title = "AI-Based Pothole Detection System";
+  else if (value.includes("attendance") || value.includes("face")) title = "Face Recognition Attendance System";
+  else if (value.includes("electricity") || value.includes("forecast")) title = "Machine Learning Energy Forecasting Platform";
+  else {
+    let clean = input.replace(/^(i want to build|create|develop|build)( a| an)? /i, "").trim();
+    if (clean.length > 5 && clean.length < 50) {
+      title = clean.split(" ").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+    } else {
+      title = "Custom System Design";
+    }
+  }
+
+  const allSkills = await prisma.skill.findMany();
+  const allLabs = await prisma.laboratory.findMany({ include: { equipment: { include: { equipment: true } } } });
+  const allEquipment = await prisma.equipment.findMany();
+
+  const detectedSkills: any[] = [];
+  const addSkillByKeyword = (keywords: string[], skillName: string) => {
+    if (keywords.some(k => value.includes(k))) {
+      const match = allSkills.find(s => s.name === skillName || s.name.includes(skillName));
+      if (match && !detectedSkills.some(s => s.id === match.id)) {
+        detectedSkills.push(match);
+      }
+    }
+  };
+
+  addSkillByKeyword(["ai ", "artificial intelligence", "machine learning", "electricity", "forecast", "face recognition", "pothole", "waste"], "Machine Learning");
+  addSkillByKeyword(["computer vision", "image", "camera", "face recognition", "pothole", "waste"], "Computer Vision");
+  addSkillByKeyword(["robot", "autonomous", "navigation"], "Robotics");
+  addSkillByKeyword(["sensor", "iot", "microcontroller", "embedded"], "Embedded Systems");
+  addSkillByKeyword(["gis", "map", "spatial", "pothole"], "GIS");
+  addSkillByKeyword(["data analysis", "electricity"], "Data Analysis");
+  addSkillByKeyword(["python", "ai ", "machine learning", "data"], "Python");
+
+  const detectedDomains = new Set<string>(["Engineering"]);
+  if (value.includes("crop") || value.includes("agricultur")) detectedDomains.add("Agriculture");
+  if (value.includes("road") || value.includes("pothole")) detectedDomains.add("Civil");
+  if (value.includes("medical") || value.includes("image") || value.includes("health")) detectedDomains.add("Healthcare");
+  if (value.includes("robot") || value.includes("warehouse")) detectedDomains.add("Robotics");
+  if (value.includes("electricity") || value.includes("energy")) detectedDomains.add("Energy");
+
+  const requiredLabs: any[] = [];
+  const requiredEquipment: any[] = [];
+
+  for (const lab of allLabs) {
+    let matchScore = 0;
+    const caps = lab.capabilities.toLowerCase();
+    const dept = lab.departmentId?.toLowerCase() || "";
+    
+    if (detectedSkills.some(s => caps.includes(s.name.toLowerCase()))) matchScore++;
+    if (Array.from(detectedDomains).some(d => dept.includes(d.toLowerCase()))) matchScore++;
+    
+    if (matchScore > 0) {
+      requiredLabs.push(lab);
+      for (const le of lab.equipment) {
+        if (!requiredEquipment.some(e => e.id === le.equipmentId)) {
+          requiredEquipment.push(le.equipment);
+        }
+      }
+    }
+  }
+
+  const limitedLabs = requiredLabs.slice(0, 2);
+  const limitedEq = requiredEquipment.filter(eq => 
+    detectedSkills.some(s => eq.category.toLowerCase().includes(s.name.toLowerCase()) || 
+    (s.name === "Computer Vision" && eq.name.toLowerCase().includes("camera")) ||
+    (s.name === "Machine Learning" && eq.name.toLowerCase().includes("gpu")) ||
+    (s.name === "Robotics" && eq.name.toLowerCase().includes("robot"))
+    )
+  );
+
+  return computeProjectIntelligence(
+    {
+      id: `custom-${Date.now()}`,
+      title,
+      summary: input,
+      department: "Interdisciplinary",
+      domains: Array.from(detectedDomains),
+    },
+    detectedSkills,
+    limitedEq.length > 0 ? limitedEq : requiredEquipment.slice(0, 3),
+    limitedLabs
+  );
 }
 
 export { weights };

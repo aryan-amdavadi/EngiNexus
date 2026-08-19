@@ -1,5 +1,5 @@
 import { prisma } from "../lib/prisma";
-import { analyzeProject } from "../lib/project-analysis";
+import { analyzeProject, analyzeCustomProject } from "../lib/project-analysis";
 
 async function main() {
   const projects = await prisma.project.findMany({
@@ -18,6 +18,9 @@ async function main() {
   if (uniqueResults.size < 4) {
     throw new Error("Project analysis results should differ across projects.");
   }
+
+  const customAnalysis = await analyzeCustomProject("I want to build a face recognition attendance system using smartphone cameras");
+  analyses.push(customAnalysis);
 
   for (const result of analyses) {
     console.log(`PROJECT: ${result.project.title}`);

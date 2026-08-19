@@ -224,6 +224,17 @@ export async function fetchProjectAnalysis(projectId: string): Promise<{ data: B
   return res.json() as Promise<{ data: BackendAnalysis }>;
 }
 
+export async function fetchUnifiedAnalysis(payload: { projectId?: string; input?: string }): Promise<{ data: { analysis: BackendAnalysis; team: TeamRecommendation } }> {
+  const res = await fetch("/api/projects/analyze", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error("Failed to fetch unified analysis.");
+  return res.json() as Promise<{ data: { analysis: BackendAnalysis; team: TeamRecommendation } }>;
+}
+
 export async function fetchStudentList(): Promise<{ data: StudentEntry[] }> {
   const res = await fetch("/api/students", { cache: "no-store" });
   if (!res.ok) throw new Error("Failed to fetch students.");
