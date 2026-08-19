@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { analyzeProject, type ProjectAnalysis } from "./intelligence";
+import { analyzeProject, fetchProjectTeam, type ProjectAnalysis, type TeamRecommendation } from "./intelligence";
 import { bottlenecks, equipment, examples, faculty, labs, students } from "./data";
 import "./polish.css";
 
@@ -79,22 +79,54 @@ function Kpi({ value, label, note, accent }: { value: string; label: string; not
 function Health({ name, detail, tone, value }: { name: string; detail: string; tone: "good" | "warning" | "critical"; value: string }) { return <div className="health"><div className={`health-icon ${tone}`}><Icon name={tone === "good" ? "check" : "warning"} size={17}/></div><div><b>{name}</b><span>{detail}</span></div><strong>{value}</strong></div>; }
 
 function Project() {
-  const [input, setInput] = useState(examples[0].value); const [state, setState] = useState<"idle" | "analyzing" | "results">("idle"); const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null); const [plan, setPlan] = useState(false); const [selectedExample, setSelectedExample] = useState(examples[0].label);
-  const run = () => { setState("analyzing"); setPlan(false); setTimeout(() => { setAnalysis(analyzeProject(input)); setState("results"); }, 1050); };
+  const [input, setInput] = useState(examples[0].value);
+  const [state, setState] = useState<"idle" | "analyzing" | "results">("idle");
+  const [analysis, setAnalysis] = useState<ProjectAnalysis | null>(null);
+  const [team, setTeam] = useState<TeamRecommendation | null>(null);
+  const [plan, setPlan] = useState(false);
+  const [selectedExample, setSelectedExample] = useState(examples[0].label);
+
+  const run = async () => {
+    setState("analyzing");
+    setPlan(false);
+    setTeam(null);
+
+    const resolvedAnalysis = analyzeProject(input);
+    setAnalysis(resolvedAnalysis);
+
+    try {
+      const projectList = await fetch("/api/projects", { cache: "no-store" }).then((response) => response.json());
+      const project = projectList?.data?.find((item: { title: string; summary: string }) => {
+        const haystack = `${item.title} ${item.summary}`.toLowerCase();
+        const query = input.toLowerCase();
+        return haystack.includes("crop") && query.includes("crop") || haystack.includes("road") && query.includes("road") || haystack.includes("medical") && query.includes("medical") || haystack.includes("warehouse") && query.includes("warehouse") || haystack.includes("energy") && query.includes("energy");
+      }) ?? projectList?.data?.[0];
+
+      if (project?.id) {
+        const teamResponse = await fetchProjectTeam(project.id);
+        setTeam(teamResponse);
+      }
+    } catch (_error) {
+      setTeam(null);
+    }
+
+    setState("results");
+  };
+
   return <><div className="page-intro project-intro"><div><div className="eyebrow">Prototype Intelligence Engine</div><h1>Turn an Engineering Idea Into a Feasible Project</h1><p>EngiNexus maps project requirements to student skills, faculty expertise, laboratories and equipment.</p></div></div>
-    <section className="idea-box"><div className="idea-box-head"><div><label htmlFor="idea">Project idea</label><span>Describe your project idea to begin.</span></div><Status tone="neutral">Prototype intelligence indicator</Status></div><textarea id="idea" value={input} onChange={(event) => { setInput(event.target.value); setSelectedExample(""); }} placeholder={examples[0].value}/><div className="example-row"><span>Try an example</span>{examples.map((example) => <button className={selectedExample === example.label ? "selected" : ""} key={example.label} onClick={() => { setInput(example.value); setState("idle"); setSelectedExample(example.label); }}>{example.label}</button>)}</div><div className="analysis-cta"><span><Icon name="spark" size={16}/> Deterministic local analysis for a reliable demo</span><button className="primary" onClick={run}>Analyze Project <Icon name="arrow"/></button></div></section>
+    <section className="idea-box"><div className="idea-box-head"><div><label htmlFor="idea">Project idea</label><span>Describe your project idea to begin.</span></div><Status tone="neutral">Prototype intelligence indicator</Status></div><textarea id="idea" value={input} onChange={(event) => { setInput(event.target.value); setSelectedExample(""); }} placeholder={examples[0].value}/><div className="example-row"><span>Try an example</span>{examples.map((example) => <button className={selectedExample === example.label ? "selected" : ""} key={example.label} onClick={() => { setInput(example.value); setState("idle"); setSelectedExample(example.label); }}>{example.label}</button>)}</div><div className="analysis-cta"><span><Icon name="spark" size={16}/> Deterministic local analysis for a reliable demo</span><button className="primary" onClick={() => void run()}>Analyze Project <Icon name="arrow"/></button></div></section>
     {state === "analyzing" && <AnalysisLoading/>}
-    {state === "results" && analysis && <ProjectResults analysis={analysis} plan={plan} onPlan={() => setPlan(true)}/>}</>;
+    {state === "results" && analysis && <ProjectResults analysis={analysis} team={team} plan={plan} onPlan={() => setPlan(true)}/>}</>;
 }
 
 function AnalysisLoading() { const steps = ["Extracting requirements", "Mapping skills", "Finding relevant expertise", "Checking resources", "Evaluating feasibility"]; return <section className="analysis-loading panel"><div className="spinner"/><div><div className="eyebrow">Understanding project</div><h2>EngiNexus is mapping the project ecosystem</h2><p>Connecting the project brief to representative university resources.</p></div><div className="loading-steps">{steps.map((step) => <span key={step}><Icon name="check" size={14}/>{step}</span>)}</div></section>; }
 
-function ProjectResults({ analysis, plan, onPlan }: { analysis: ProjectAnalysis; plan: boolean; onPlan: () => void }) { return <div className="project-results"><section className="results-header"><div><div className="eyebrow">Analysis complete</div><h2>{analysis.title}</h2><div className="tags">{analysis.domains.map((d) => <span key={d}>{d}</span>)}</div></div><Status>Recommendation confidence: High</Status></section>
+function ProjectResults({ analysis, team, plan, onPlan }: { analysis: ProjectAnalysis; team: TeamRecommendation | null; plan: boolean; onPlan: () => void }) { return <div className="project-results"><section className="results-header"><div><div className="eyebrow">Analysis complete</div><h2>{analysis.title}</h2><div className="tags">{analysis.domains.map((d) => <span key={d}>{d}</span>)}</div></div><Status>Recommendation confidence: High</Status></section>
   <section className="decision-summary"><div className="decision-primary"><div className="eyebrow">Project status</div><h2>Feasible with Minor Constraints</h2><p>Strong capability coverage with two manageable availability risks.</p><div className="decision-action"><Icon name="check" size={15}/><span><b>Recommended action</b>Reserve specialized equipment early.</span></div></div><div className="decision-score"><span>Feasibility</span><b>86%</b><small>High confidence</small></div><div className="decision-constraints"><span>Key constraints</span><b><Icon name="warning" size={14}/>Limited drone availability</b><b><Icon name="warning" size={14}/>High GPU demand</b></div></section>
-  <section className="project-snapshot"><div><span>Project snapshot</span><b>From idea to resource plan</b></div><Snapshot label="Domain" value="Agriculture + AI + Robotics"/><Snapshot label="Estimated team" value="3–4 students"/><Snapshot label="Primary labs" value="2"/><Snapshot label="Required equipment" value="5 resources"/><Snapshot label="Mentor match" value="96%"/></section>
+  <section className="project-snapshot"><div><span>Project snapshot</span><b>From idea to resource plan</b></div><Snapshot label="Domain" value="Agriculture + AI + Robotics"/><Snapshot label="Estimated team" value= {team ? `${team.members.length} students` : "3–4 students"}/><Snapshot label="Primary labs" value="2"/><Snapshot label="Required equipment" value="5 resources"/><Snapshot label="Mentor match" value="96%"/></section>
   <section className="feasibility panel"><div className="feasibility-score"><ScoreRing/><div><div className="eyebrow">Project Feasibility</div><h2>Feasible with minor constraints</h2><p>Strong talent, mentor and laboratory coverage with manageable availability risks.</p></div></div><div className="breakdown">{[["Skill Coverage", 93], ["Faculty Coverage", 91], ["Laboratory Availability", 84], ["Equipment Availability", 78], ["Schedule Feasibility", 82]].map(([label, value]) => <div key={String(label)}><span>{label}</span><div><i style={{ width: `${value}%` }}/></div><b>{value}%</b></div>)}</div><div className="score-reason"><div><b>Decision factors</b><span><Icon name="check" size={14}/>Core technical skills available</span><span><Icon name="check" size={14}/>Suitable faculty identified</span><span><Icon name="check" size={14}/>Primary laboratory and most equipment available</span></div><div className="warnings"><b>Constraints to plan for</b><span><Icon name="warning" size={14}/>Specialized drone access is limited</span><span><Icon name="warning" size={14}/>GPU resources are high demand</span></div><p><b>Recommended mitigation:</b> Reserve specialized equipment early and schedule GPU-intensive workloads during lower-demand periods.</p></div></section>
   <div className="grid two requirements"><section className="panel"><SectionHead eyebrow="Requirements" title="Required Skills"/><div className="skill-list">{analysis.skills.map((skill) => <div key={skill.name}><span>{skill.name}</span><b className={skill.level === "High" ? "high" : "medium"}>{skill.level}</b></div>)}</div></section><section className="panel"><SectionHead eyebrow="Requirements" title="Required Resources"/><div className="resource-requirements"><div><span>Equipment</span>{analysis.equipment.map((item) => <b key={item}><Icon name="check" size={14}/>{item}</b>)}</div><div><span>Laboratories</span>{analysis.labs.map((item) => <b key={item}><Icon name="lab" size={14}/>{item}</b>)}</div></div></section></div>
-  <section><SectionHead eyebrow="Talent matching" title="Recommended Project Team"/><div className="people-grid">{students.map((student) => <article className="person-card" key={student.name}><div className="avatar">{student.initials}</div><div className="person-head"><h3>{student.name}</h3><span>{student.department}</span></div><b className="match">{student.match}% <small>match</small></b><div className="tags">{student.skills.map((s) => <span key={s}>{s}</span>)}</div><p><b>Why this recommendation?</b>{student.why}</p></article>)}</div></section>
+  <section><SectionHead eyebrow="Talent matching" title="Recommended Project Team"/><div className="people-grid">{team?.members?.length ? team.members.map((member) => <article className="person-card" key={member.name}><div className="avatar">{member.name.split(" ").map((part) => part[0]).slice(0,2).join("")}</div><div className="person-head"><h3>{member.name}</h3><span>{member.department ?? "Department match"}</span></div><b className="match">{member.confidence}% <small>confidence</small></b><div className="tags">{member.skillsCovered.map((skill) => <span key={`${member.name}-${skill}`}>{skill}</span>)}</div><p><b>Why this recommendation?</b>{member.reason}</p></article>) : <div className="empty-state">Team data is currently unavailable.</div>}</div></section>
   <section className="grid mentor-labs"><div><SectionHead eyebrow="Faculty matching" title="Potential Faculty Mentors"/>{faculty.map((person) => <article className="mentor" key={person.name}><div className="mentor-icon"><Icon name="people"/></div><div><h3>{person.name}</h3><span>{person.area}</span><p><b>Why this recommendation?</b>{person.note}</p><Status>{person.available}</Status></div><b>{person.match}%<small>match</small></b></article>)}</div><div><SectionHead eyebrow="Resource matching" title="Recommended Laboratories"/>{labs.slice(0,3).map((lab, i) => <article className="lab-match" key={lab.id}><div><h3>{lab.name}</h3><Status tone={lab.availability === "Near capacity" ? "warning" : "good"}>{lab.availability}</Status></div><b>{[94,89,81][i]}%<small>match</small></b><p><span className="why-note">Why this recommendation? Contains required capabilities and supports the project’s technical requirements.</span>{lab.capabilities.slice(0,2).map((cap) => <span key={cap}><Icon name="check" size={13}/>{cap}</span>)}</p></article>)}</div></section>
   <section className="panel"><SectionHead eyebrow="Availability check" title="Equipment Check" action={<Status tone="neutral">Availability for recommended window</Status>}/><div className="equipment-table"><div className="table-row table-head"><span>Resource</span><span>Required</span><span>Availability</span><span>Status</span></div>{[["GPU Workstation","Available","Ready","good"],["High-Resolution Camera","Available","Ready","good"],["Robotic Platform","Available","Ready","good"],["Environmental Sensor Kit","Limited","Constraint","warning"],["Drone","Booked","Constraint","critical"]].map(([item, availability, status, tone]) => <div className="table-row" key={item}><b>{item}</b><span>Required</span><span>{availability}</span><Status tone={tone as "good" | "warning" | "critical"}>{status}</Status></div>)}</div></section>
   {!plan ? <section className="plan-cta"><div><div className="eyebrow">Resource plan ready</div><h2>Generate a project resource plan</h2><p>Turn this intelligence into a concise team, resource and schedule proposal.</p></div><button className="primary" onClick={onPlan}>Generate Project Resource Plan <Icon name="arrow"/></button></section> : <ResourcePlan/>}

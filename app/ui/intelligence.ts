@@ -2,6 +2,22 @@ import { examples } from "./data";
 
 export type ProjectAnalysis = { title: string; domains: string[]; skills: { name: string; level: "High" | "Medium" }[]; equipment: string[]; labs: string[] };
 
+export type TeamRecommendation = {
+  teamScore: number;
+  coverage: { covered: number; total: number; percent: number };
+  members: Array<{ name: string; skillsCovered: string[]; confidence: number; reason: string; department?: string }>;
+};
+
+export async function fetchProjectTeam(projectId: string): Promise<TeamRecommendation> {
+  const response = await fetch(`/api/projects/${projectId}/team`, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to fetch project team recommendations.");
+  }
+
+  const json = await response.json();
+  return json.data as TeamRecommendation;
+}
+
 const flagship: ProjectAnalysis = {
   title: "Autonomous Crop Monitoring Robot",
   domains: ["Agriculture", "Robotics", "Computer Vision", "AI / ML", "Embedded Systems"],

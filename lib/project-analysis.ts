@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { calculateStudentSkillProfile } from "./student-skill-profile";
 
 const weights = {
   skillCoverage: 0.3,
@@ -94,55 +95,44 @@ export async function analyzeProject(projectId: string) {
 
   const skillMatches = await Promise.all(
     requiredSkills.map(async (skill) => {
-      const students = await prisma.studentSkill.findMany({
-        where: { skillId: skill.id },
+      const students = await prisma.student.findMany({
         include: {
-          skill: true,
-          student: {
-            include: { department: true },
-          },
+          department: true,
         },
       });
 
       const ranked = await Promise.all(
-        students.map(async (entry) => {
-          const studentSkills = await prisma.studentSkill.findMany({
-            where: { studentId: entry.studentId },
-            include: { skill: true },
-          });
-
-          const matchedSkills = studentSkills
-            .filter((studentSkill) => skillIds.includes(studentSkill.skillId))
-            .map((studentSkill) => studentSkill.skill.name);
-
+        students.map(async (student) => {
+          const profile = await calculateStudentSkillProfile(student.id);
+          const target = profile.skills.find((entry) => entry.skill === skill.name);
+          const score = target?.confidence ?? 0;
+          const matchedSkills = target ? [skill.name] : [];
           const missingSkills = requiredSkills
-            .filter((requiredSkill) => !studentSkills.some((studentSkill) => studentSkill.skillId === requiredSkill.id))
+            .filter((requiredSkill) => !profile.skills.some((entry) => entry.skill === requiredSkill.name))
             .map((requiredSkill) => requiredSkill.name);
 
-          const score = Math.min(
-            100,
-            Math.max(
-              36,
-              Math.round(entry.proficiency * 18 + entry.yearsExperience * 3 + matchedSkills.length * 10),
-            ),
-          );
-
-          const reasons = [
-            matchedSkills.includes(skill.name) ? `Direct alignment with ${skill.name}.` : `Related exposure to ${skill.name}.`,
-          ];
+          const reasons = [] as string[];
+          if (target) {
+            reasons.push(`Evidence-based confidence in ${skill.name} is ${score}%.`);
+            if (target.evidence.length > 0) {
+              reasons.push(`Evidence sources: ${target.evidence.map((item) => item.source).join(", ")}.`);
+            }
+          } else {
+            reasons.push(`No strong evidence for ${skill.name} in academic, project, or declared skills.`);
+          }
 
           if (missingSkills.length === 0) {
-            reasons.push("Covers the full project skill set for this requirement.");
+            reasons.push("Student covers the full project skill set at the current confidence threshold.");
           } else if (missingSkills.length <= 2) {
             reasons.push(`Missing only ${missingSkills.slice(0, 2).join(", ")}.`);
           }
 
           return {
             student: {
-              id: entry.student.id,
-              name: `${entry.student.firstName} ${entry.student.lastName}`,
-              department: entry.student.department.name,
-              email: entry.student.email,
+              id: student.id,
+              name: `${student.firstName} ${student.lastName}`,
+              department: student.department.name,
+              email: student.email,
             },
             score,
             matchedSkills,
@@ -154,7 +144,7 @@ export async function analyzeProject(projectId: string) {
 
       return {
         skill: skill.name,
-        students: ranked.sort((left, right) => right.score - left.score).slice(0, 5),
+        students: ranked.filter((entry) => entry.score > 0).sort((left, right) => right.score - left.score).slice(0, 5),
       };
     }),
   );

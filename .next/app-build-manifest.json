@@ -1,22 +1,49 @@
 {
   "pages": {
-    "/layout": [
+    "/api/projects/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/layout.css",
-      "static/chunks/app/layout.js"
+      "static/chunks/app/api/projects/route.js"
     ],
-    "/page": [
+    "/api/projects/[id]/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/page.css",
-      "static/chunks/app/page.js"
+      "static/chunks/app/api/projects/[id]/route.js"
     ],
-    "/[page]/page": [
+    "/api/projects/[id]/team/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/css/app/[page]/page.css",
-      "static/chunks/app/[page]/page.js"
+      "static/chunks/app/api/projects/[id]/team/route.js"
+    ],
+    "/api/projects/[id]/analyze/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/projects/[id]/analyze/route.js"
+    ],
+    "/api/students/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/students/route.js"
+    ],
+    "/api/students/[id]/skills/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/students/[id]/skills/route.js"
+    ],
+    "/api/faculty/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/faculty/route.js"
+    ],
+    "/api/labs/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/labs/route.js"
+    ],
+    "/api/equipment/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/equipment/route.js"
     ]
   }
 }
