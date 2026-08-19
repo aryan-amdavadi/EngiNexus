@@ -1,182 +1,91 @@
-# EngiNexus
+<div align="center">
+  <img src="https://placehold.co/1200x350/1e1e2e/a6e3a1?text=EngiNexus&font=Montserrat" alt="EngiNexus Cover Image">
 
-EngiNexus is a university engineering ecosystem prototype that connects projects, faculty, students, labs, equipment, and resource availability. The system is built as a local Next.js application with a SQLite-backed Prisma datastore so future intelligence services can operate against a structured relational model without a separate backend process.
+  # 🚀 EngiNexus
+  
+  **A Next-Generation Hub for Engineering Collaboration and Innovation**
+  
+  [![UI/UX Centric](https://img.shields.io/badge/Design-UI%2FUX%20Centric-blueviolet?style=for-the-badge)](#)
+  [![Responsive](https://img.shields.io/badge/Layout-Fully%20Responsive-success?style=for-the-badge)](#)
+</div>
 
-## Backend architecture
+<br />
 
-- Next.js App Router powers the web application.
-- Route handlers under `app/api` expose database-backed APIs.
-- Prisma is the ORM layer for all data access.
-- SQLite is used for local development and validation.
-- Domain analysis logic lives in `lib/project-analysis.ts` and is designed to be extended by future intelligence services.
+## 💡 The General Idea: What is EngiNexus?
 
-## Database architecture
+**EngiNexus** is a centralized platform designed specifically for engineering students, developers, and professionals. It bridges the gap between conceptual learning and practical development by providing a unified workspace to manage projects, share technical resources, and collaborate seamlessly. 
 
-The relational schema includes the core entities required for EngiNexus:
+Whether you are organizing complex laboratory data, writing code snippets, or managing group tasks, EngiNexus streamlines the workflow so you can focus on what matters most: building great things.
 
-- Department
-- Student
-- Faculty
-- Skill
-- StudentSkill
-- FacultyExpertise
-- Project
-- ProjectRequirement
-- Laboratory
-- Equipment
-- LabEquipment
-- ResourceAvailability
-- Course
-- CourseSkill
-- StudentAcademicRecord
-- StudentProject
-- Mentorship
-- ResourceUtilization
+### ✨ Key UI/UX Highlights
+* **Minimalist & Distraction-Free:** A clean, modern interface designed to reduce cognitive load and enhance focus.
+* **Intuitive Navigation:** Complex data is broken down into easily digestible dashboards, ensuring that essential tools are never more than a click away.
+* **Dark-Mode First:** Crafted with a deep, high-contrast color palette to prevent eye strain during long, late-night development sessions.
+* **Fluid Responsiveness:** A flawless experience that adapts perfectly across desktops, tablets, and mobile devices.
 
-These entities are modeled in `prisma/schema.prisma` and are seeded through `prisma/seed.ts` with demo data that is internally consistent for the project analysis workflow.
+---
 
-## Local setup
+## 🛠️ How It Works: First-Time Setup (Including Database)
 
-1. Install dependencies:
-   npm install
-2. Generate the Prisma client:
-   npm run db:generate
-3. Create the local SQLite database and schema:
-   npm run db:push
-4. Seed the demo dataset:
-   npm run db:seed
-5. Start the app:
-   npm run dev
+Getting EngiNexus up and running on a brand-new device is simple. Follow these exact steps to set up your local development environment and database.
 
-## Migration instructions
+### Prerequisites
+Before you begin, ensure your new device has the following installed:
+* **Git:** For version control.
+* **Node.js & npm:** (Or yarn/pnpm) for managing dependencies and running the application.
+* **Database Server:** A running instance of your required database (e.g., PostgreSQL, MySQL).
 
-Use Prisma migrate when you want to version the schema:
+### Installation Steps
 
-npm run db:migrate
-
-This creates a new migration in `prisma/migrations` and applies it to the local SQLite database.
-
-## Seed instructions
-
-To reseed the database after resetting the local SQLite database:
-
-rm -f prisma/dev.db
-npm run db:push
-npm run db:seed
-
-The seed script creates representative demo records for:
-
-- 6 departments
-- 30 students
-- 10 faculty members
-- 40+ skills
-- 5 projects with different requirements
-- 8 labs
-- 30+ equipment records
-- 20+ courses
-
-## API list
-
-Core data endpoints:
-
-- GET /api/projects
-- GET /api/projects/:id
-- GET /api/projects/:id/analyze
-- GET /api/students
-- GET /api/students/:id
-- GET /api/faculty
-- GET /api/labs
-- GET /api/equipment
-- GET /api/resources/utilization
-- GET /api/resources/bottlenecks
-- GET /api/resources/forecast
-- POST /api/academic/import
-
-The analysis endpoint returns structured, explainable project feasibility data including domains, required skills, matching students, faculty alignment, lab and equipment availability, feasibility factors, constraints, and recommendations.
-
-The resource intelligence endpoints are database-backed and deterministic:
-
-- `/api/resources/utilization` returns utilization records with `resource`, `date`, `utilization`, `capacity`, and `demand`.
-- `/api/resources/bottlenecks` detects bottlenecks using threshold checks, demand vs capacity, projected shortages, and availability signals.
-- `/api/resources/forecast` provides local forecasts (moving average + linear trend) with projected demand gaps and recommendations.
-
-Offline academic import endpoint:
-
-- `/api/academic/import` accepts authorized local CSV/JSON export payloads (no scraping, no portal connectivity, no external APIs).
-- The import pipeline validates required fields, normalizes variants (`student_id`, `course_code`, etc.), handles duplicates, and upserts `StudentAcademicRecord` rows.
-- Unknown students/courses and invalid grades are skipped with row-level reasons in the summary response.
-
-Privacy note:
-
-- Raw academic records are not exposed through public student endpoints.
-- Skill evidence remains available through `/api/students/:id/skills` as derived confidence output.
-
-## Validation
-
-To validate the project analysis engine across multiple seeded projects:
-
-npm run test:analysis
-
-The build is validated with:
-
-npm run build
-
-## Academic Data Import (Task B6)
-
-EngiNexus supports an **authorized offline academic data import pipeline**. It does not scrape any university portal, does not connect to external APIs, and does not enumerate enrollment numbers automatically. All data must be provided as a local CSV or JSON export.
-
-### Pipeline
-
-```
-CSV / JSON export
-  → Validation (required columns, valid grades, known students/courses)
-  → Normalization (column aliases, grade normalisation O/S/E → A+/A/A-)
-  → StudentAcademicRecord (upsert)
-  → CourseSkill mapping
-  → StudentSkill evidence upsert (feeds the Skill Profile engine)
-  → Student Skill Profile (calculateStudentSkillProfile)
-```
-
-### Authorization
-
-Set `IMPORT_API_KEY` in your `.env` file. Pass the same value as `X-API-Key` in each request. Omitting the env var disables auth (development mode).
-
-### Supported grades
-
-`A+` `A` `A-` `B+` `B` `B-` `C+` `C` `C-` `D` `F`
-
-Non-standard grades are normalised: `O` → `A+`, `S` → `A`, `E` → `A-`.
-
-### Example JSON import
+**1. Clone the Repository**  
+Bring the code to your local machine by cloning the repo:
 
 ```bash
-curl -X POST http://localhost:3000/api/academic/import \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: dev-import-key-change-in-production" \
-  -d '{"format":"json","data":[{"student_id":"<id>","semester":"2026-Winter","course_code":"CE201","grade":"A+","credits":4}]}'
+git clone https://github.com/aryan-amdavadi/EngiNexus.git
+cd EngiNexus
 ```
 
-### Example response
+**2. Install Dependencies**  
+Install all the required packages to make the UI and backend function:
 
-```json
-{
-  "success": true,
-  "summary": {
-    "recordsDetected": 120,
-    "students": 30,
-    "courses": 18,
-    "imported": 116,
-    "skipped": 4,
-    "skippedRecords": [
-      { "rowNumber": 12, "reason": "Invalid grade \"Z\"." }
-    ],
-    "message": "Import completed with skipped records."
-  }
-}
+```bash
+npm install
 ```
 
-### Synthetic fixture
+**3. Configure Environment Variables**  
+You need to connect your database and configure API keys. 
+* Duplicate the `.env.example` file and rename it to `.env`.
+* Open the new `.env` file and update your `DATABASE_URL` with your exact database credentials.
 
-A demonstration CSV is at `scripts/fixtures/academic_sample.csv`. Run the full pipeline test with:
+**4. Set Up the Prisma Database**  
+Run the following Prisma commands to initialize your database schema and generate the Prisma Client.
 
-    npm run test:academic-import
+Apply migrations to your database (this creates your tables) and generates the Prisma client:
+```bash
+npx prisma migrate dev
+```
+*(Note: If you are pulling the repo for the first time and just need to sync the schema without a migration history, you can alternatively use `npx prisma db push`)*
+
+To view and manage your database data visually in your browser, you can run:
+```bash
+npx prisma studio
+```
+
+**5. Fire It Up!**  
+Start the development server to see the UI in action:
+
+```bash
+npm run dev
+```
+
+*Open your browser and navigate to `http://localhost:3000` (or the port specified in your terminal) to explore the EngiNexus interface.*
+
+---
+
+## 🤝 Contributing & Feedback
+
+Great UI/UX is built through iteration and feedback. If you have suggestions on how to improve the interface, optimize the user journey, or fix a bug, feel free to open an **Issue** or submit a **Pull Request**.
+
+<div align="center">
+  <p>Built with ❤️ by <a href="https://github.com/aryan-amdavadi">aryan-amdavadi</a></p>
+</div>
