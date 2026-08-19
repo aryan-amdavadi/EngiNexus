@@ -88,8 +88,28 @@ Core data endpoints:
 - GET /api/labs
 - GET /api/equipment
 - GET /api/resources/utilization
+- GET /api/resources/bottlenecks
+- GET /api/resources/forecast
+- POST /api/academic/import
 
 The analysis endpoint returns structured, explainable project feasibility data including domains, required skills, matching students, faculty alignment, lab and equipment availability, feasibility factors, constraints, and recommendations.
+
+The resource intelligence endpoints are database-backed and deterministic:
+
+- `/api/resources/utilization` returns utilization records with `resource`, `date`, `utilization`, `capacity`, and `demand`.
+- `/api/resources/bottlenecks` detects bottlenecks using threshold checks, demand vs capacity, projected shortages, and availability signals.
+- `/api/resources/forecast` provides local forecasts (moving average + linear trend) with projected demand gaps and recommendations.
+
+Offline academic import endpoint:
+
+- `/api/academic/import` accepts authorized local CSV/JSON export payloads (no scraping, no portal connectivity, no external APIs).
+- The import pipeline validates required fields, normalizes variants (`student_id`, `course_code`, etc.), handles duplicates, and upserts `StudentAcademicRecord` rows.
+- Unknown students/courses and invalid grades are skipped with row-level reasons in the summary response.
+
+Privacy note:
+
+- Raw academic records are not exposed through public student endpoints.
+- Skill evidence remains available through `/api/students/:id/skills` as derived confidence output.
 
 ## Validation
 

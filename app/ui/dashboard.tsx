@@ -1,7 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { analyzeProject, fetchProjectTeam, type ProjectAnalysis, type TeamRecommendation } from "./intelligence";
+import { useEffect, useMemo, useState } from "react";
+import {
+  analyzeProject,
+  fetchProjectTeam,
+  fetchResourceBottlenecks,
+  fetchResourceForecast,
+  fetchResourceUtilization,
+  type ProjectAnalysis,
+  type ResourceBottleneck,
+  type ResourceForecastEntry,
+  type ResourceUtilizationEntry,
+  type TeamRecommendation,
+} from "./intelligence";
 import { bottlenecks, equipment, examples, faculty, labs, students } from "./data";
 import "./polish.css";
 
@@ -48,6 +59,43 @@ export default function Dashboard({ initialPage }: { initialPage: string }) {
   const valid = nav.some((item) => item.id === initialPage) ? initialPage as Page : "overview";
   const [page, setPage] = useState<Page>(valid);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [resourceLatest, setResourceLatest] = useState<ResourceUtilizationEntry[]>([]);
+  const [resourceBottlenecks, setResourceBottlenecks] = useState<ResourceBottleneck[]>([]);
+  const [gpuForecast, setGpuForecast] = useState<ResourceForecastEntry | null>(null);
+  const [resourceSummary, setResourceSummary] = useState({
+    laboratoriesMonitored: 0,
+    equipmentMonitored: 0,
+    highDemandCount: 0,
+    attentionCount: 0,
+  });
+
+  useEffect(() => {
+    let mounted = true;
+
+    void Promise.all([
+      fetchResourceUtilization(),
+      fetchResourceBottlenecks(),
+      fetchResourceForecast("GPU Workstations"),
+    ])
+      .then(([utilizationResponse, bottleneckResponse, forecastResponse]) => {
+        if (!mounted) return;
+        setResourceLatest(utilizationResponse.latest);
+        setResourceSummary(utilizationResponse.summary);
+        setResourceBottlenecks(bottleneckResponse.data);
+        setGpuForecast(forecastResponse.data.focus);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setResourceLatest([]);
+        setResourceBottlenecks([]);
+        setGpuForecast(null);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const go = (target: Page) => { setPage(target); setMobileOpen(false); window.history.pushState({}, "", target === "overview" ? "/" : `/${target}`); };
   return <div className="app-shell">
     <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
@@ -59,18 +107,64 @@ export default function Dashboard({ initialPage }: { initialPage: string }) {
     {mobileOpen && <button className="scrim" aria-label="Close navigation" onClick={() => setMobileOpen(false)} />}
     <main>
       <header className="topbar"><button className="menu-button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Icon name="menu"/></button><div className="crumb">University Engineering Ecosystem <span>/</span> <b>{nav.find((n) => n.id === page)?.label}</b></div><div className="top-actions"><span className="prototype"><i/> Prototype Intelligence Engine</span><button className="period"><Icon name="calendar" size={15}/> Academic Year 2026 <span>⌄</span></button></div></header>
-      <div className="content">{page === "overview" && <Overview go={go}/>} {page === "project-intelligence" && <Project/>} {page === "resource-intelligence" && <Resources/>} {page === "talent" && <Talent/>} {page === "labs" && <Labs/>}</div>
+      <div className="content">{page === "overview" && <Overview go={go} latest={resourceLatest} summary={resourceSummary} bottlenecks={resourceBottlenecks}/>} {page === "project-intelligence" && <Project/>} {page === "resource-intelligence" && <Resources latest={resourceLatest} summary={resourceSummary} bottlenecks={resourceBottlenecks} gpuForecast={gpuForecast}/>} {page === "talent" && <Talent/>} {page === "labs" && <Labs/>}</div>
     </main>
   </div>;
 }
 
-function Overview({ go }: { go: (page: Page) => void }) {
-  const labBars = labs.map((lab) => ({ label: lab.name, value: lab.utilization }));
+function mapRiskTone(risk: string): "critical" | "warning" | "neutral" {
+  if (risk === "CRITICAL") return "critical";
+  if (risk === "HIGH" || risk === "MEDIUM") return "warning";
+  return "neutral";
+}
+
+function resourceStatusText(status: string) {
+  if (status === "AVAILABLE") return "Healthy";
+  if (status === "NEAR_CAPACITY") return "Near capacity";
+  if (status === "LIMITED") return "High demand";
+  if (status === "BOOKED") return "Booked";
+  return "Constrained";
+}
+
+function Overview({
+  go,
+  latest,
+  summary,
+  bottlenecks: detectedBottlenecks,
+}: {
+  go: (page: Page) => void;
+  latest: ResourceUtilizationEntry[];
+  summary: { laboratoriesMonitored: number; equipmentMonitored: number; highDemandCount: number; attentionCount: number };
+  bottlenecks: ResourceBottleneck[];
+}) {
+  const laboratoryRecords = latest.filter((entry) => entry.resourceType === "LABORATORY");
+  const equipmentRecords = latest.filter((entry) => entry.resourceType === "EQUIPMENT");
+  const labBars = (laboratoryRecords.length > 0 ? laboratoryRecords : labs.map((lab) => ({ resourceName: lab.name, utilization: lab.utilization } as ResourceUtilizationEntry)))
+    .map((lab) => ({ label: lab.resourceName, value: Math.round(lab.utilization) }));
+  const healthRows = equipmentRecords.length > 0
+    ? equipmentRecords.slice().sort((left, right) => right.utilization - left.utilization).slice(0, 4)
+    : equipment.slice(0, 4).map((item) => ({ resourceName: item.name, status: item.utilization > 90 ? "LIMITED" : "AVAILABLE", utilization: item.utilization }));
+  const bottleneckRows = detectedBottlenecks.length > 0
+    ? detectedBottlenecks
+    : bottlenecks.map((item) => ({
+      resource: item.title,
+      risk: item.severity.toUpperCase(),
+      currentUtilization: 85,
+      capacity: 8,
+      demand: 7.5,
+      projectedDemand: 11,
+      recommendation: item.action,
+    }));
+
+  const resourceUtilizationAvg = healthRows.length > 0
+    ? Math.round(healthRows.reduce((sum, item) => sum + item.utilization, 0) / healthRows.length)
+    : 87;
+
   return <><div className="page-intro"><div><div className="eyebrow">Command center</div><h1>Engineering Resource Intelligence</h1><p>Connect engineering talent, projects and physical resources to make better decisions across the university ecosystem.</p></div><button className="primary" onClick={() => go("project-intelligence")}>Explore project feasibility <Icon name="arrow"/></button></div>
     <section className="intelligence-pillars" aria-label="EngiNexus intelligence model"><div><span>01</span><b>Discover</b><p>Find the right people, skills and expertise.</p></div><div><span>02</span><b>Match</b><p>Connect projects with mentors, labs and equipment.</p></div><div><span>03</span><b>Optimize</b><p>Identify bottlenecks and improve resource utilization.</p></div></section>
-    <div className="kpis"><Kpi value="42" label="Laboratories" note="Across 6 engineering domains"/><Kpi value="1,247" label="Equipment & Resources" note="12 resources need attention"/><Kpi value="1,430" label="Active Projects" note="+8% from previous period"/><Kpi value="87%" label="Resource Utilization" note="Healthy operating range" accent/></div>
-    <div className="grid two overview-grid"><section className="panel chart-panel"><SectionHead eyebrow="Infrastructure" title="Laboratory Utilization" action={<span className="muted">Current academic period</span>}/><MiniBars items={labBars}/><div className="chart-note"><span><i className="legend blue"/>Utilization rate</span><span>42 labs monitored</span></div></section><section className="panel health-panel"><SectionHead eyebrow="Live view" title="Resource Health"/><Health name="GPU Workstations" detail="High demand" tone="critical" value="94%"/><Health name="Robotics Lab" detail="Near capacity" tone="warning" value="88%"/><Health name="3D Printers" detail="High demand" tone="warning" value="89%"/><Health name="AI Lab" detail="Healthy" tone="good" value="92%"/><div className="panel-link" onClick={() => go("resource-intelligence")}>View resource intelligence <Icon name="arrow" size={16}/></div></section></div>
-    <section className="panel bottleneck-panel"><SectionHead eyebrow="Prototype Intelligence Engine" title="AI-Detected Resource Bottlenecks" action={<span className="muted">4 signals requiring review</span>}/><div className="bottlenecks">{bottlenecks.map((item) => <article key={item.title}><Status tone={item.tone as "critical" | "warning" | "neutral"}>{item.severity} priority</Status><h3>{item.title}</h3><p>{item.detail}</p><div className="recommend"><b>Recommended action</b>{item.action}</div></article>)}</div></section>
+    <div className="kpis"><Kpi value={`${summary.laboratoriesMonitored || 42}`} label="Laboratories" note="Across 6 engineering domains"/><Kpi value={`${summary.equipmentMonitored || 1247}`} label="Equipment & Resources" note={`${summary.attentionCount || 12} resources need attention`}/><Kpi value="1,430" label="Active Projects" note="+8% from previous period"/><Kpi value={`${resourceUtilizationAvg}%`} label="Resource Utilization" note="Healthy operating range" accent/></div>
+    <div className="grid two overview-grid"><section className="panel chart-panel"><SectionHead eyebrow="Infrastructure" title="Laboratory Utilization" action={<span className="muted">Current academic period</span>}/><MiniBars items={labBars}/><div className="chart-note"><span><i className="legend blue"/>Utilization rate</span><span>{summary.laboratoriesMonitored || 42} labs monitored</span></div></section><section className="panel health-panel"><SectionHead eyebrow="Live view" title="Resource Health"/>{healthRows.map((row) => <Health key={row.resourceName} name={row.resourceName} detail={resourceStatusText(row.status)} tone={row.utilization >= 90 ? "critical" : row.utilization >= 75 ? "warning" : "good"} value={`${Math.round(row.utilization)}%`}/>)}<div className="panel-link" onClick={() => go("resource-intelligence")}>View resource intelligence <Icon name="arrow" size={16}/></div></section></div>
+    <section className="panel bottleneck-panel"><SectionHead eyebrow="Prototype Intelligence Engine" title="AI-Detected Resource Bottlenecks" action={<span className="muted">{bottleneckRows.length} signals requiring review</span>}/><div className="bottlenecks">{bottleneckRows.map((item) => <article key={item.resource}><Status tone={mapRiskTone(item.risk)}>{item.risk.toLowerCase()} priority</Status><h3>{item.resource}</h3><p>Current demand {item.demand}/{item.capacity} with projected demand {item.projectedDemand}.</p><div className="recommend"><b>Recommended action</b>{item.recommendation}</div></article>)}</div></section>
     <section className="opportunity"><div className="opportunity-copy"><div className="eyebrow">Connected intelligence</div><h2>AI-Detected Interdisciplinary Opportunity</h2><p>EngiNexus identifies complementary capabilities that may be difficult to discover through department-level search.</p><Status>Strong cross-disciplinary skill coverage detected</Status></div><div className="opportunity-flow"><div><span>Computer Science</span><b>Computer Vision</b></div><em>+</em><div><span>Electronics</span><b>Embedded Systems</b></div><em>+</em><div><span>Mechanical Engineering</span><b>Robotics</b></div><i className="flow-arrow">↓</i><strong>Autonomous Infrastructure Inspection</strong></div></section>
   </>;
 }
@@ -136,13 +230,14 @@ function Snapshot({ label, value }: { label: string; value: string }) { return <
 
 function ResourcePlan() { return <section className="resource-plan"><div className="plan-title"><div className="check-round"><Icon name="check"/></div><div><div className="eyebrow">Final decision summary</div><h2>Project Resource Plan</h2></div><Status>Ready to review</Status></div><div className="plan-grid"><div><span>Team</span><b>3–4 interdisciplinary students</b></div><div><span>Mentor</span><b>Dr. Ananya Sharma</b></div><div><span>Labs</span><b>AI / ML Lab · Robotics Lab</b></div><div><span>Project window</span><b>6 weeks</b></div><div><span>Core resources</span><b>GPU · Camera · Robot · Sensors</b></div><div><span>Primary constraint</span><b>Drone availability</b></div></div><div className="plan-mitigation"><Icon name="warning" size={16}/><p><b>Recommended mitigation</b>Reserve drone access early and use simulation plus alternative data collection while blocked.</p></div></section>; }
 
-function Resources() { const [drawer, setDrawer] = useState(false); return <><div className="page-intro"><div><div className="eyebrow">Administrator / infrastructure intelligence</div><h1>University Resource Intelligence</h1><p>Identify utilization patterns, resource bottlenecks and future infrastructure requirements.</p></div><button className="period"><Icon name="calendar" size={15}/> Sep 2026 – Feb 2027 <span>⌄</span></button></div><section className="resource-story" aria-label="Resource intelligence flow"><div><b>Observe</b><span>Current utilization</span></div><i>↓</i><div><b>Predict</b><span>Projected demand</span></div><i>↓</i><div><b>Recommend</b><span>Prioritized university action</span></div></section><div className="kpis"><Kpi value="42" label="Laboratories monitored" note="Across 6 departments"/><Kpi value="1,247" label="Equipment resources" note="Representative data"/><Kpi value="18" label="High-demand resources" note="Above 80% utilization"/><Kpi value="9" label="Need attention" note="Capacity or booking action"/></div>
-  <div className="grid resource-main"><section className="panel chart-panel"><SectionHead eyebrow="Utilization" title="Laboratory Utilization" action={<span className="muted">Current period</span>}/><MiniBars items={labs.map((l) => ({label: l.name, value: l.utilization}))}/></section><section className="panel equipment-demand"><SectionHead eyebrow="Demand" title="Equipment Demand"/><p>Click GPU Workstations to inspect capacity intelligence.</p>{equipment.slice(0,5).map((item) => <button className="demand-row" onClick={() => item.id === "gpu" && setDrawer(true)} key={item.id}><div><b>{item.name}</b><Status tone={item.utilization > 90 ? "critical" : item.utilization > 75 ? "warning" : "good"}>{item.utilization > 90 ? "High demand" : item.utilization > 75 ? "Elevated" : "Stable"}</Status></div><strong>{item.utilization}%</strong><Icon name="arrow" size={16}/></button>)}</section></div>
-  <section className="panel forecast"><SectionHead eyebrow="Prototype forecast" title="Projected Resource Demand" action={<span className="muted">GPU Workstations</span>}/><div className="forecast-body"><div className="forecast-chart"><div className="capacity-line"><span>Capacity: 8 units</span></div><div className="forecast-columns"><div><i style={{height:"55%"}}/><span>Current</span><b>7.5</b></div><div><i style={{height:"68%"}}/><span>Next month</span><b>8.2</b></div><div className="projected"><i style={{height:"92%"}}/><span>Next semester</span><b>11</b></div></div></div><div className="forecast-copy"><Status tone="critical">Projected capacity gap: 27%</Status><h3>Demand will exceed available GPU capacity next semester.</h3><p>This representative prototype forecast is based on current utilization, active projects and expected course demand.</p><div className="recommend"><b>AI recommendation</b>Add 3 GPU workstations or redistribute compatible workloads to alternative computing resources.</div></div></div></section>
+function Resources({ latest, summary, bottlenecks: detectedBottlenecks, gpuForecast }: { latest: ResourceUtilizationEntry[]; summary: { laboratoriesMonitored: number; equipmentMonitored: number; highDemandCount: number; attentionCount: number }; bottlenecks: ResourceBottleneck[]; gpuForecast: ResourceForecastEntry | null }) { const [drawer, setDrawer] = useState(false); const labsData = latest.filter((entry) => entry.resourceType === "LABORATORY"); const equipmentData = latest.filter((entry) => entry.resourceType === "EQUIPMENT").slice().sort((left, right) => right.utilization - left.utilization); const demandRows = equipmentData.length > 0 ? equipmentData.slice(0, 5) : equipment.slice(0, 5).map((item) => ({ id: item.id, resourceName: item.name, utilization: item.utilization, status: item.status === "Booked" ? "BOOKED" : item.status === "Limited" ? "LIMITED" : "AVAILABLE" } as ResourceUtilizationEntry)); const focus = gpuForecast; const currentDemand = focus?.currentDemand ?? 7.5; const nextMonth = focus?.projection.nextMonth ?? 8.2; const nextSemester = focus?.projection.nextSemester ?? 11; const capacity = focus?.capacity ?? 8; const gap = Number((nextSemester - capacity).toFixed(1)); const gapPercent = capacity > 0 ? Math.round((Math.max(0, gap) / capacity) * 100) : 0; const projectedHeight = Math.max(20, Math.min(95, Math.round((nextSemester / Math.max(capacity, nextSemester)) * 92))); return <><div className="page-intro"><div><div className="eyebrow">Administrator / infrastructure intelligence</div><h1>University Resource Intelligence</h1><p>Identify utilization patterns, resource bottlenecks and future infrastructure requirements.</p></div><button className="period"><Icon name="calendar" size={15}/> Sep 2026 – Feb 2027 <span>⌄</span></button></div><section className="resource-story" aria-label="Resource intelligence flow"><div><b>Observe</b><span>Current utilization</span></div><i>↓</i><div><b>Predict</b><span>Projected demand</span></div><i>↓</i><div><b>Recommend</b><span>Prioritized university action</span></div></section><div className="kpis"><Kpi value={`${summary.laboratoriesMonitored || 42}`} label="Laboratories monitored" note="Across 6 departments"/><Kpi value={`${summary.equipmentMonitored || 1247}`} label="Equipment resources" note="From utilization records"/><Kpi value={`${summary.highDemandCount || 18}`} label="High-demand resources" note="Above threshold utilization"/><Kpi value={`${summary.attentionCount || 9}`} label="Need attention" note="Capacity or booking action"/></div>
+  <div className="grid resource-main"><section className="panel chart-panel"><SectionHead eyebrow="Utilization" title="Laboratory Utilization" action={<span className="muted">Current period</span>}/><MiniBars items={(labsData.length > 0 ? labsData : labs.map((l) => ({ resourceName: l.name, utilization: l.utilization } as ResourceUtilizationEntry))).map((l) => ({label: l.resourceName, value: Math.round(l.utilization)}))}/></section><section className="panel equipment-demand"><SectionHead eyebrow="Demand" title="Equipment Demand"/><p>Click GPU Workstations to inspect capacity intelligence.</p>{demandRows.map((item) => <button className="demand-row" onClick={() => item.resourceName.toLowerCase().includes("gpu") && setDrawer(true)} key={item.id ?? item.resourceName}><div><b>{item.resourceName}</b><Status tone={item.utilization > 90 ? "critical" : item.utilization > 75 ? "warning" : "good"}>{item.utilization > 90 ? "High demand" : item.utilization > 75 ? "Elevated" : "Stable"}</Status></div><strong>{Math.round(item.utilization)}%</strong><Icon name="arrow" size={16}/></button>)}</section></div>
+  <section className="panel forecast"><SectionHead eyebrow="Backend forecast" title="Projected Resource Demand" action={<span className="muted">{focus?.resourceName ?? "GPU Workstations"}</span>}/><div className="forecast-body"><div className="forecast-chart"><div className="capacity-line"><span>Capacity: {capacity} units</span></div><div className="forecast-columns"><div><i style={{height:`${Math.max(20, Math.round((currentDemand / Math.max(capacity, nextSemester)) * 92))}%`}}/><span>Current</span><b>{currentDemand}</b></div><div><i style={{height:`${Math.max(20, Math.round((nextMonth / Math.max(capacity, nextSemester)) * 92))}%`}}/><span>Next month</span><b>{nextMonth}</b></div><div className="projected"><i style={{height:`${projectedHeight}%`}}/><span>Next semester</span><b>{nextSemester}</b></div></div></div><div className="forecast-copy"><Status tone={gap > 0 ? "critical" : "good"}>Projected capacity gap: {Math.max(0, gapPercent)}%</Status><h3>{gap > 0 ? "Demand will exceed available capacity next semester." : "Capacity remains within projected demand."}</h3><p>This deterministic forecast uses local utilization history with moving average and linear trend projection.</p><div className="recommend"><b>Recommendation</b>{focus?.recommendation ?? "Reserve specialized equipment."}</div></div></div></section>
   <section className="hidden-capacity"><div><div className="eyebrow">Optimization opportunity</div><h2>Hidden Capacity</h2><p>Mechanical Automation Lab is underutilized but compatible with robotics, CAD and automation work.</p><button className="quiet-button">View compatible project types <Icon name="arrow" size={15}/></button></div><div className="capacity-metric"><span>Current utilization</span><b>47%</b><i>→</i><span>After reallocation</span><b>63%</b></div><div className="capacity-note"><b>18 transferable projects</b><span>Shift compatible work from high-demand Robotics Lab slots.</span></div></section>
-  {drawer && <GpuDrawer close={() => setDrawer(false)}/>}</> }
+  <section className="panel bottleneck-panel"><SectionHead eyebrow="Backend bottlenecks" title="Resource Bottlenecks" action={<span className="muted">{detectedBottlenecks.length} identified</span>}/><div className="bottlenecks">{detectedBottlenecks.slice(0, 4).map((item) => <article key={item.resource}><Status tone={mapRiskTone(item.risk)}>{item.risk.toLowerCase()} priority</Status><h3>{item.resource}</h3><p>Utilization {item.currentUtilization}% · Demand {item.demand}/{item.capacity} · Projected {item.projectedDemand}</p><div className="recommend"><b>Recommended action</b>{item.recommendation}</div></article>)}</div></section>
+  {drawer && <GpuDrawer close={() => setDrawer(false)} forecast={focus}/>}</> }
 
-function GpuDrawer({ close }: { close: () => void }) { return <><button className="drawer-scrim" aria-label="Close GPU analysis" onClick={close}/><aside className="drawer"><div className="drawer-head"><div><div className="eyebrow">Prototype intelligence indicator</div><h2>GPU Resource Analysis</h2></div><button aria-label="Close" onClick={close}><Icon name="close"/></button></div><div className="gpu-summary"><div><span>Current capacity</span><b>8 <small>units</small></b></div><div><span>Current demand</span><b>7.5 <small>units</small></b></div><div><span>Utilization</span><b>94%</b></div><div><span>Active projects</span><b>26</b></div></div><div className="gap-box"><span>Projected demand</span><strong>11 units</strong><div><b>Projected gap</b><em>3 units</em></div></div><div className="drawer-recommend"><Icon name="spark"/><div><b>AI Recommendation</b><p>Add 3 GPU workstations or redistribute compatible workloads to alternative computing resources.</p><Status tone="neutral">Recommendation confidence: High</Status></div></div><div className="drawer-foot"><Status tone="critical">Capacity decision needed</Status><span>Prototype • Demo Dataset</span></div></aside></>; }
+function GpuDrawer({ close, forecast }: { close: () => void; forecast: ResourceForecastEntry | null }) { const capacity = forecast?.capacity ?? 8; const currentDemand = forecast?.currentDemand ?? 7.5; const projectedDemand = forecast?.projectedDemand ?? 11; const gap = Number((projectedDemand - capacity).toFixed(1)); const trackedPeriods = forecast?.history.length ?? 2; return <><button className="drawer-scrim" aria-label="Close GPU analysis" onClick={close}/><aside className="drawer"><div className="drawer-head"><div><div className="eyebrow">Backend intelligence indicator</div><h2>GPU Resource Analysis</h2></div><button aria-label="Close" onClick={close}><Icon name="close"/></button></div><div className="gpu-summary"><div><span>Current capacity</span><b>{capacity} <small>units</small></b></div><div><span>Current demand</span><b>{currentDemand} <small>units</small></b></div><div><span>Utilization</span><b>{Math.round(forecast?.utilization ?? 94)}%</b></div><div><span>Tracked periods</span><b>{trackedPeriods}</b></div></div><div className="gap-box"><span>Projected demand</span><strong>{projectedDemand} units</strong><div><b>Projected gap</b><em>{gap > 0 ? gap : 0} units</em></div></div><div className="drawer-recommend"><Icon name="spark"/><div><b>Recommendation</b><p>{forecast?.recommendation ?? "Add GPU capacity."}</p><Status tone="neutral">Deterministic backend forecast</Status></div></div><div className="drawer-foot"><Status tone={gap > 0 ? "critical" : "good"}>{gap > 0 ? "Capacity decision needed" : "Capacity in healthy range"}</Status><span>Database-backed resource intelligence</span></div></aside></>; }
 
 function Talent() { const [tab, setTab] = useState("Students"); const skills = [["Computer Vision",82],["AI / ML",78],["Robotics",61],["Embedded Systems",59],["Data Science",67],["Cybersecurity",46],["GIS",34]]; return <><div className="page-intro"><div><div className="eyebrow">University capability map</div><h1>Talent & Expertise</h1><p>Find interdisciplinary student talent, faculty expertise and emerging engineering skill gaps.</p></div></div><section className="panel talent-panel"><div className="tabs">{["Students","Faculty","Skills"].map((item) => <button className={tab===item?"selected":""} onClick={()=>setTab(item)} key={item}>{item}</button>)}</div>{tab === "Skills" ? <div className="skills-view"><SectionHead title="Skill Distribution"/><MiniBars items={skills.map(([label,value])=>({label:String(label),value:Number(value)}))}/></div> : <div className="talent-table"><div className="table-row table-head"><span>{tab === "Students" ? "Student" : "Faculty member"}</span><span>Primary focus</span><span>Availability</span><span>Strength</span></div>{(tab === "Students" ? students : faculty).map((person) => <div className="table-row" key={person.name}><b>{person.name}</b><span>{"skills" in person ? person.skills.slice(0,2).join(" · ") : person.area}</span><span>{"available" in person ? person.available : "Active project contributor"}</span><b>{"match" in person ? `${person.match}%` : "—"}</b></div>)}</div>}</section><section className="panel gaps"><SectionHead eyebrow="Future readiness" title="Skill Gaps"/><div className="gap-grid"><Gap title="Advanced Robotics" status="Shortage" text="Demand is outpacing specialized student capacity."/><Gap title="Medical AI" status="Shortage" text="Limited cross-domain mentoring availability."/><Gap title="Edge AI" status="Growing demand" text="New project demand increasing across IoT programs."/></div></section></>; }
 function Gap({ title, status, text }: {title:string;status:string;text:string}) { return <div><Status tone={status === "Shortage" ? "warning" : "neutral"}>{status}</Status><h3>{title}</h3><p>{text}</p></div>; }

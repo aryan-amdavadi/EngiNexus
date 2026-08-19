@@ -26,9 +26,7 @@ export async function GET(
         skills: {
           include: { skill: true },
         },
-        academicRecords: {
-          include: { course: true },
-        },
+        academicRecords: true,
       },
     });
 
@@ -54,12 +52,7 @@ export async function GET(
           proficiency: entry.proficiency,
           yearsExperience: entry.yearsExperience,
         })),
-        academicRecords: student.academicRecords.map((record) => ({
-          course: record.course.title,
-          grade: record.grade,
-          semester: record.semester,
-          status: record.status,
-        })),
+        academicRecordCount: student.academicRecords.length,
       },
     });
   } catch (error) {

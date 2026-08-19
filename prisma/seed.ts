@@ -362,6 +362,8 @@ async function main() {
           resourceName: lab.name,
           period: "2026-Autumn",
           utilizationRate: Math.max(35, lab.utilizationRate - 8),
+          capacity: lab.capacity,
+          demand: Number(((Math.max(35, lab.utilizationRate - 8) / 100) * lab.capacity).toFixed(1)),
           status: availabilityStatus,
         },
         {
@@ -370,6 +372,8 @@ async function main() {
           resourceName: lab.name,
           period: "2026-Spring",
           utilizationRate: lab.utilizationRate,
+          capacity: lab.capacity,
+          demand: Number(((lab.utilizationRate / 100) * lab.capacity).toFixed(1)),
           status: availabilityStatus,
         },
       ],
@@ -393,8 +397,26 @@ async function main() {
 
     await prisma.resourceUtilization.createMany({
       data: [
-        { resourceType: ResourceEntityType.EQUIPMENT, resourceId: equipment.id, resourceName: equipment.name, period: "2026-Autumn", utilizationRate: Math.max(30, equipmentSeed.utilizationRate - 5), status: equipmentSeed.status },
-        { resourceType: ResourceEntityType.EQUIPMENT, resourceId: equipment.id, resourceName: equipment.name, period: "2026-Spring", utilizationRate: equipmentSeed.utilizationRate, status: equipmentSeed.status },
+        {
+          resourceType: ResourceEntityType.EQUIPMENT,
+          resourceId: equipment.id,
+          resourceName: equipment.name,
+          period: "2026-Autumn",
+          utilizationRate: Math.max(30, equipmentSeed.utilizationRate - 5),
+          capacity: equipmentSeed.availability,
+          demand: Number((((Math.max(30, equipmentSeed.utilizationRate - 5) / 100) * equipmentSeed.availability) + 0.5).toFixed(1)),
+          status: equipmentSeed.status,
+        },
+        {
+          resourceType: ResourceEntityType.EQUIPMENT,
+          resourceId: equipment.id,
+          resourceName: equipment.name,
+          period: "2026-Spring",
+          utilizationRate: equipmentSeed.utilizationRate,
+          capacity: equipmentSeed.availability,
+          demand: Number((((equipmentSeed.utilizationRate / 100) * equipmentSeed.availability) + (equipmentSeed.name === "GPU Workstations" ? 1.5 : 0.7)).toFixed(1)),
+          status: equipmentSeed.status,
+        },
       ],
     });
   }

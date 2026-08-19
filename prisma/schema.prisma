@@ -229,6 +229,7 @@ model StudentAcademicRecord {
   grade    String
   semester String
   credits  Int    @default(0)
+  sgpa     Float?
   status   String @default("ACTIVE")
   student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   course   Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
@@ -271,6 +272,8 @@ model ResourceUtilization {
   resourceName    String
   period          String
   utilizationRate Int               @default(0)
+  capacity        Int               @default(0)
+  demand          Float             @default(0)
   status          ResourceStatus    @default(AVAILABLE)
   loggedAt        DateTime          @default(now())
 

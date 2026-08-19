@@ -8,6 +8,76 @@ export type TeamRecommendation = {
   members: Array<{ name: string; skillsCovered: string[]; confidence: number; reason: string; department?: string }>;
 };
 
+export type ResourceUtilizationEntry = {
+  id: string;
+  resourceType: "LABORATORY" | "EQUIPMENT";
+  resourceId: string;
+  resourceName: string;
+  period: string;
+  date: string;
+  utilization: number;
+  capacity: number;
+  demand: number;
+  status: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "BOOKED" | "NEAR_CAPACITY";
+};
+
+export type ResourceBottleneck = {
+  resource: string;
+  risk: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  currentUtilization: number;
+  capacity: number;
+  demand: number;
+  projectedDemand: number;
+  recommendation: string;
+};
+
+export type ResourceForecastEntry = {
+  resourceType: "LABORATORY" | "EQUIPMENT";
+  resourceId: string;
+  resourceName: string;
+  capacity: number;
+  currentDemand: number;
+  projectedDemand: number;
+  demandGap: number;
+  utilization: number;
+  status: "AVAILABLE" | "LIMITED" | "UNAVAILABLE" | "BOOKED" | "NEAR_CAPACITY";
+  history: Array<{ period: string; demand: number }>;
+  projection: {
+    nextMonth: number;
+    nextSemester: number;
+  };
+  recommendation: string;
+};
+
+type ResourceUtilizationResponse = {
+  data: ResourceUtilizationEntry[];
+  latest: ResourceUtilizationEntry[];
+  summary: {
+    laboratoriesMonitored: number;
+    equipmentMonitored: number;
+    highDemandCount: number;
+    attentionCount: number;
+  };
+};
+
+type ResourceBottlenecksResponse = {
+  data: ResourceBottleneck[];
+};
+
+type ResourceForecastResponse = {
+  data: {
+    focus: ResourceForecastEntry | null;
+    forecasts: ResourceForecastEntry[];
+    summary: {
+      laboratoriesMonitored: number;
+      equipmentMonitored: number;
+      highDemandCount: number;
+      attentionCount: number;
+    };
+    generatedAt: string;
+  };
+};
+
 export async function fetchProjectTeam(projectId: string): Promise<TeamRecommendation> {
   const response = await fetch(`/api/projects/${projectId}/team`, { cache: "no-store" });
   if (!response.ok) {
@@ -16,6 +86,35 @@ export async function fetchProjectTeam(projectId: string): Promise<TeamRecommend
 
   const json = await response.json();
   return json.data as TeamRecommendation;
+}
+
+export async function fetchResourceUtilization(): Promise<ResourceUtilizationResponse> {
+  const response = await fetch("/api/resources/utilization", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to fetch resource utilization.");
+  }
+
+  return (await response.json()) as ResourceUtilizationResponse;
+}
+
+export async function fetchResourceBottlenecks(): Promise<ResourceBottlenecksResponse> {
+  const response = await fetch("/api/resources/bottlenecks", { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Failed to fetch resource bottlenecks.");
+  }
+
+  return (await response.json()) as ResourceBottlenecksResponse;
+}
+
+export async function fetchResourceForecast(resourceName = "GPU Workstations"): Promise<ResourceForecastResponse> {
+  const response = await fetch(`/api/resources/forecast?resource=${encodeURIComponent(resourceName)}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw new Error("Failed to fetch resource forecast.");
+  }
+
+  return (await response.json()) as ResourceForecastResponse;
 }
 
 const flagship: ProjectAnalysis = {

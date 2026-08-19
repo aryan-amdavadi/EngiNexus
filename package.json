@@ -12,7 +12,8 @@
     "db:migrate": "prisma migrate dev --name init",
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
-    "test:analysis": "tsx scripts/test-project-analysis.ts"
+    "test:analysis": "tsx scripts/test-project-analysis.ts",
+    "test:academic-import": "tsx scripts/test-academic-import.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.7.0",
