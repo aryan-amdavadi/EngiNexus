@@ -1,0 +1,278 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  COMPLETED
+  ARCHIVED
+}
+
+enum RequirementType {
+  SKILL
+  EQUIPMENT
+  LABORATORY
+}
+
+enum ResourceEntityType {
+  LABORATORY
+  EQUIPMENT
+}
+
+enum ResourceStatus {
+  AVAILABLE
+  LIMITED
+  UNAVAILABLE
+  BOOKED
+  NEAR_CAPACITY
+}
+
+model Department {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  code        String      @unique
+  description String?
+  students    Student[]
+  faculty     Faculty[]
+  projects    Project[]
+  labs        Laboratory[]
+  courses     Course[]
+}
+
+model Student {
+  id             String                @id @default(cuid())
+  firstName      String
+  lastName       String
+  email          String                @unique
+  departmentId   String
+  department     Department            @relation(fields: [departmentId], references: [id])
+  skills         StudentSkill[]
+  academicRecords StudentAcademicRecord[]
+  projects       StudentProject[]
+  createdAt      DateTime              @default(now())
+
+  @@index([departmentId])
+}
+
+model Faculty {
+  id          String            @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String            @unique
+  title       String
+  departmentId String
+  department  Department        @relation(fields: [departmentId], references: [id])
+  expertise   FacultyExpertise[]
+  mentorships Mentorship[]
+  createdAt   DateTime          @default(now())
+
+  @@index([departmentId])
+}
+
+model Skill {
+  id               String             @id @default(cuid())
+  name             String             @unique
+  category         String?
+  description      String?
+  studentSkills    StudentSkill[]
+  facultyExpertise FacultyExpertise[]
+  courseSkills     CourseSkill[]
+  projectRequirements ProjectRequirement[]
+}
+
+model StudentSkill {
+  id              String @id @default(cuid())
+  studentId       String
+  skillId         String
+  proficiency    Int    @default(1)
+  yearsExperience Int    @default(0)
+  student         Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  skill           Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, skillId])
+  @@index([skillId])
+}
+
+model FacultyExpertise {
+  id              String @id @default(cuid())
+  facultyId       String
+  skillId         String
+  proficiency    Int    @default(1)
+  yearsExperience Int    @default(0)
+  faculty         Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  skill           Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([facultyId, skillId])
+  @@index([skillId])
+}
+
+model Project {
+  id          String            @id @default(cuid())
+  title       String
+  summary     String
+  domains     String            @default("[]")
+  status      ProjectStatus     @default(PLANNING)
+  departmentId String
+  department  Department        @relation(fields: [departmentId], references: [id])
+  requirements ProjectRequirement[]
+  studentProjects StudentProject[]
+  mentorships Mentorship[]
+  createdAt   DateTime          @default(now())
+
+  @@index([departmentId])
+}
+
+model ProjectRequirement {
+  id             String          @id @default(cuid())
+  projectId      String
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  requirementType RequirementType
+  skillId        String?
+  skill          Skill?          @relation(fields: [skillId], references: [id], onDelete: SetNull)
+  equipmentId    String?
+  equipment      Equipment?     @relation("RequiredEquipment", fields: [equipmentId], references: [id], onDelete: SetNull)
+  laboratoryId   String?
+  laboratory     Laboratory?    @relation("RequiredLaboratory", fields: [laboratoryId], references: [id], onDelete: SetNull)
+  priority       Int             @default(1)
+  note           String?
+
+  @@index([projectId])
+  @@index([skillId])
+  @@index([equipmentId])
+  @@index([laboratoryId])
+}
+
+model Laboratory {
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  departmentId        String
+  department          Department           @relation(fields: [departmentId], references: [id])
+  capacity            Int                  @default(0)
+  utilizationRate     Int                  @default(0)
+  status              ResourceStatus       @default(AVAILABLE)
+  capabilities        String               @default("[]")
+  equipment           LabEquipment[]
+  projectRequirements ProjectRequirement[] @relation("RequiredLaboratory")
+
+  @@index([departmentId])
+}
+
+model Equipment {
+  id                  String               @id @default(cuid())
+  name                String               @unique
+  category            String
+  location            String
+  utilizationRate     Int                  @default(0)
+  status              ResourceStatus       @default(AVAILABLE)
+  availability        Int                  @default(1)
+  labs                LabEquipment[]
+  projectRequirements ProjectRequirement[] @relation("RequiredEquipment")
+}
+
+model LabEquipment {
+  id         String    @id @default(cuid())
+  labId      String
+  equipmentId String
+  quantity   Int       @default(1)
+  lab        Laboratory @relation(fields: [labId], references: [id], onDelete: Cascade)
+  equipment  Equipment  @relation(fields: [equipmentId], references: [id], onDelete: Cascade)
+
+  @@unique([labId, equipmentId])
+  @@index([equipmentId])
+}
+
+model ResourceAvailability {
+  id            String            @id @default(cuid())
+  resourceType  ResourceEntityType
+  resourceId    String
+  resourceName  String
+  availableUnits Int              @default(0)
+  utilizationRate Int             @default(0)
+  status        ResourceStatus    @default(AVAILABLE)
+  updatedAt     DateTime          @updatedAt
+
+  @@index([resourceType, resourceId])
+}
+
+model Course {
+  id          String        @id @default(cuid())
+  code        String        @unique
+  title       String
+  departmentId String
+  department  Department    @relation(fields: [departmentId], references: [id])
+  skills      CourseSkill[]
+  academicRecords StudentAcademicRecord[]
+}
+
+model CourseSkill {
+  id       String @id @default(cuid())
+  courseId String
+  skillId  String
+  weight   Int    @default(1)
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  skill    Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, skillId])
+  @@index([skillId])
+}
+
+model StudentAcademicRecord {
+  id       String @id @default(cuid())
+  studentId String
+  courseId String
+  grade    String
+  semester String
+  credits  Int    @default(0)
+  status   String @default("ACTIVE")
+  student  Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  course   Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, courseId, semester])
+  @@index([courseId])
+}
+
+model StudentProject {
+  id        String @id @default(cuid())
+  studentId String
+  projectId String
+  role      String
+  status    String @default("ACTIVE")
+  score     Int?   @default(0)
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, projectId])
+  @@index([projectId])
+}
+
+model Mentorship {
+  id        String @id @default(cuid())
+  facultyId String
+  projectId String
+  role      String @default("Mentor")
+  status    String @default("ACTIVE")
+  faculty   Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([facultyId, projectId])
+  @@index([projectId])
+}
+
+model ResourceUtilization {
+  id              String            @id @default(cuid())
+  resourceType    ResourceEntityType
+  resourceId      String
+  resourceName    String
+  period          String
+  utilizationRate Int               @default(0)
+  status          ResourceStatus    @default(AVAILABLE)
+  loggedAt        DateTime          @default(now())
+
+  @@index([resourceType, resourceId])
+}
